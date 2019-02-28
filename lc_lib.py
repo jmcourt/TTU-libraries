@@ -1,6 +1,7 @@
 import astropy.coordinates as coord
 from   astropy.io import fits
 from   astroquery.simbad import Simbad
+import freq_lib as frq
 from   matplotlib import colors as co
 from   matplotlib import pyplot as pl
 import numpy as np
@@ -109,11 +110,11 @@ class lightcurve(object):
       self.ft=ft*norm
     elif norm=='leahy':
       self.ft_norm='leahy'
-      self.ft=leahy(ft,np.sum(self.y))
+      self.ft=frq.leahy(ft,np.sum(self.y))
     elif norm=='rms':
       if 'b' not in self.__dict__: raise NotImplementedError('No background data available to RMS normalise FT in '+str(self.__class__)+' object')
       self.ft_norm='rms'
-      self.ft=rms(ft,np.sum(self.y),np.mean(self.y+self.b),np.mean(self.b))
+      self.ft=frq.rms(ft,np.sum(self.y),np.mean(self.y+self.b),np.mean(self.b))
     else:
       if norm!='none':
         wr.warn('Invalid Fourier normalisation '+norm+' specified: using None normalisation')
@@ -139,7 +140,7 @@ class lightcurve(object):
 
     # Generalised L-S from Zechmeister & Kuerster, 2009, eq 5-15
 
-    self.ls=lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm)
+    self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm)
     self.ls_freqs=np.array(freqrange)
 
   def lomb_scargle_plot(self):
@@ -177,20 +178,6 @@ class lightcurve(object):
     self.dynamic_ls_spectrum         = dynamic_spectrum
     self.dynamic_ls_spectrum_tvalues = starttime+bin_separation*(np.arange(0,numbins,1.0))+binsize/2.0
     self.dynamic_ls_spectrum_fvalues = freqrange
-
-  # Bootstrapping to get significance contours
-
-  def calculate_dynamic_lomb_scargle_spectrogram_significance_thresholds(self,trials=1000):
-    if 'lsparams' not in self.__dict__.keys():
-      raise DataError('No dynamic Lomb-Scargle spectrogram to calculate significance!')
-    print('Calculating significance thresholds:')
-    trial_maxes=np.zeros(trials)
-    for t in range(trials):
-      trial_lc=self.shuffled()
-      trial_lc.lomb_scargle_spectrogram(self.lsparams['freqrange'],self.lsparams['binsize'],self.lsparams['bin_separation'])
-      trial_maxes=np.max(trial_lc.dynamic_ls_spectrum)
-    print(trial_maxes)
-    exit()
 
   def plot_lomb_scargle_spectrogram(self,colour_range='auto',filename=None):
     if 'dynamic_ls_spectrum' not in self.__dict__:
@@ -324,69 +311,3 @@ def is_overlap(user_range,test_ranges):
     if np.logical_not(test_range[0]>user_range[1] or user_range[0]>test_range[1]):
       return True
   return False
-
-# ======= Fourier normalisation procedures =======
-
-'''Input key:
-    counts : the total number of counts in the lightcurve from which the FT was taken
-    rate   : the source + background count rate (per unit time) of the data sample from which the
-              spectrum was created.
-    bg_rate: the background count rate (per unit time) of the data sample from which the spectrum
-              was created.
-    const  : the average power given in Leahy normalisation for pure white noise.  Theoretically
-              const=2, but in practice is slightly lower and varies between telescopes.'''
-
-def rms(f,counts,rate,bg_rate,const=2):
-  return leahy2rms(leahy(f,counts),rate,bg_rate,const)
-
-def leahy(f,counts):
-  return 2.0*f/counts
-
-def leahy2rms(l,rate,bg_rate,const=2):
-   denom=(rate-bg_rate)**2
-   if denom<=0:
-      raise DataError('RMS normalisation received source+bg rate smaller than bg rate!')
-   else:
-      mult=1.0/denom
-   rms=(l-const)*(bg_rate)*mult
-   return rms
-
-# ======== Generalised Lomb-Scargling function =========
-
-def lomb_scargle(t,y,ye,freqs,norm='auto'):
-
-    # Generalised L-S from Zechmeister & Kuerster, 2009, eq 5-15
-
-    w=(ye**-2)/(np.sum(ye**-2))
-    om=freqs*2*np.pi
-
-    ft_table=np.array(np.outer(om,t))
-
-    # ^ Vectorising the operation.  Axis=1 means we are summing over t, not over om
-
-    Y=np.sum(w*y)
-    C=np.sum(w*np.cos(ft_table),axis=1)
-    S=np.sum(w*np.sin(ft_table),axis=1)
-
-    YhY=np.sum(w*y**2)
-    YhC=np.sum(w*y*np.cos(ft_table),axis=1)
-    YhS=np.sum(w*y*np.sin(ft_table),axis=1)
-    ChC=np.sum(w*np.cos(ft_table)**2,axis=1)
-    ChS=np.sum(w*np.cos(ft_table)*np.sin(ft_table),axis=1)
-    ShS=np.sum(w*np.sin(ft_table)**2,axis=1)
-
-    YY=YhY-Y*Y
-    YC=YhC-Y*C
-    YS=YhS-Y*S
-    SS=ShS-S*S
-    CS=ChS-C*S
-    CC=ChC-C*C
-
-    D=CC*SS-CS**2
-
-    #        V  normalisation from Z&K09 and from Horne & Baliunas 86
-
-    if norm=='auto':
-      norm=(len(t)-1)/2
-
-    return norm*1/(YY*D)*(SS*(YC**2)+CC*(YS**2)-2*CS*YC*YS)
