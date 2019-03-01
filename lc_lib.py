@@ -34,6 +34,7 @@ class lightcurve(object):
     self.y_units=''
     self.binsize=0
     self.ft_norm='N/A'
+    self.acceptable_gap=1.5 # anything more than 1.5 times the median time separation is considered a data gap
     self.unpack_metadata()
     self.t_unit_string = '' if self.t_units=='' else '('+self.t_units+')'
     self.y_unit_string = '' if self.y_units=='' else '('+self.y_units+')'
@@ -81,9 +82,9 @@ class lightcurve(object):
 
   # return approx location of significant data gaps (>25* median time separation by default)
 
-  def get_data_gaps(self,min_gap_mult=25):
+  def get_data_gaps(self):
     delta_T=self.x[1:]-self.x[:-1]
-    acceptable_gap=min_gap_mult*np.median(delta_T)
+    acceptable_gap=self.acceptable_gap*np.median(delta_T)
     gap_mask=delta_T>acceptable_gap
     gap_starts=self.x[:-1][gap_mask]
     gap_ends=self.x[1:][gap_mask]
@@ -242,6 +243,7 @@ class tess_lightcurve(lightcurve):
     self.objname=self.meta['name']
     self.mission=self.meta['mission']
     self.binsize=self.meta['binsize']
+    self.acceptable_gap=25 # allow a waaaay bigger data gap before a data gap is declared
     abx=np.array(self.meta['bx'])
     with wr.catch_warnings():
       wr.filterwarnings('ignore',message='invalid value encountered in less_equal')
@@ -256,12 +258,23 @@ class tess_lightcurve(lightcurve):
     self.t_units='BJD'
     self.y_units='e/s'
 
+class rxte_lightcurve(lightcurve):
+  def unpack_metadata(self):
+    self.objname=self.meta['name']
+    self.mission=self.meta['mission']
+    self.binsize=self.meta['binsize']
+    self.gtis=self.meta['gtis']
+    self.min_channel=self.meta['min_channel']
+    self.max_channel=self.meta['max_channel']
+    self.t_units='s'
+    self.y_units='cts/s/PCU'
+
 # ======= define some fetchers for making instrument-specific lightcurves =======================================================================
 
 def get_tess_lc(filename):
   imeta={}
   f=fits.open(filename)
-  if f[0].header['TELESCOP'][:4].upper()!='TESS':
+  if f[1].header['TELESCOP'][:4].upper()!='TESS':
     raise DataError('FITS file does not appear to be from TESS')
   if f[1].header['EXTNAME'].upper()!='LIGHTCURVE':
     raise DataError('TESS FITS file does not appear to be a lightcurve')
@@ -301,7 +314,75 @@ def get_tess_lc(filename):
   f.close()
   return tess_lightcurve(x,y,ye,meta=imeta)
 
+###############################################################################
+
+def get_rxte_lc_from_gx(filename,binsize,min_chan=0,max_chan=255):
+  imeta={}
+  f=fits.open(filename)
+  if f[1].header['TELESCOP'][:3].upper()!='XTE':
+    raise DataError('FITS file does not appear to be from RXTE')
+  if f[1].header['DATAMODE']!='GoodXenon_2s':
+    raise DataError('RXTE FITS file does not appear to be a PCA GoodXenon file')
+  imeta['mission']='RXTE'
+  imeta['name']=f[1].header['OBJECT']
+  imeta['binsize']=binsize
+  photonlist=np.array([f[1].data['TIME']])
+  photon_words=np.array(f[1].data.field(1))
+
+  if min_chan<0:min_chan=0
+  if max_chan>255:max_chan=255
+  imeta['min_channel']=min_chan
+  imeta['max_channel']=max_chan
+  if min_chan==0 and max_chan==255:
+    pass
+  else:
+    channels=boolean_words_to_number(photon_words,(16,24))
+    photonmask=np.logical_and(channels>=min_chan,channels<=max_chan)
+    wr.warning("Filtering by channel?  I'm not 100% sure GX data words are LittleEndian... need to check this later")
+    photonlist=photonlist[photonmask]
+
+  t_start=f[1].header['TSTART']
+  t_end  =f[1].header['TSTOP']
+  t_interval=t_end-t_start
+  x=np.arange(t_start,t_end,binsize)
+  testx_s=x[:,np.newaxis]
+  testx_e=testx_s+binsize
+  if binsize<0.1:
+    wr.warn('The way I pack photons in bins tends to memerror for small bin sizes.  Maybe play with np.hist?')
+  boolean_less=np.less(photonlist,testx_e)
+  boolean_greq=np.greater_equal(photonlist,testx_s)
+  boolean_master=np.logical_and(boolean_less,boolean_greq) # a 2D array, #photons by #bins, with a True or False indicating whether than photon should be in that bin
+  counts=np.sum(boolean_master,axis=1) # number of photons in each bin
+  y=counts/binsize
+  ye=(counts**0.5)/binsize
+
+  gtimask=np.zeros(len(x),dtype=bool)
+  gtis=f[2].data
+  imeta['gtis']=gtis
+  for g in gtis:
+    in_gti=np.logical_and(x>=g[0],x<g[1])
+    gtimask=np.logical_or(gtimask,in_gti)
+
+  x=x[gtimask]
+  y=y[gtimask]
+  ye=ye[gtimask]
+
+  return rxte_lightcurve(x,y,ye,meta=imeta)
+
 # ======= General purpose lightcurvey gubbins ======
+
+def boolean_words_to_number(words,key,big_endian=False):
+
+  # key is a 2-tuple containing the start and (end+1) indices of the relevant binary passage in the dataword
+
+  words=words[:,key[0]:key[1]]
+  decoder=2**np.arange(0,key[1]-key[0],1,dtype=int)
+  if big_endian:
+    decoder=decoder[::-1]
+  decoded_words=np.sum(words*decoder,axis=1)
+  print(np.min(decoded_words))
+  exit()
+  return decoded_words
 
 def is_overlap(user_range,test_ranges):
   # user range should be a 2-length iterable, whereas tes_ranges can be a list of 2-length iterables
