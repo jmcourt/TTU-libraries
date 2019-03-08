@@ -1,9 +1,9 @@
 import astropy.coordinates as coord
 from   astropy.io import fits
 from   astroquery.simbad import Simbad
+import data_lib as dat
 import file_lib as fi
 import freq_lib as frq
-from   matplotlib import colors as co
 from   matplotlib import gridspec as gs
 from   matplotlib import pyplot as pl
 import numpy as np
@@ -11,11 +11,6 @@ import random as rn
 from   scipy import fftpack as fou
 from   scipy import signal as sgnl
 import warnings as wr
-
-# ======== HUMAN READABLE EXCEPTIONS ====================================================================================================================
-
-class DataError(Exception):
-  pass
 
 # ========= BASE LIGHTCURVE OBJECT! =====================================================================================================================
 
@@ -31,12 +26,14 @@ class lightcurve(object):
     self.x=tx[nanmask]
     self.y=ty[nanmask]
     self.ye=tye[nanmask]
+    if 'acceptable_gap' not in meta.keys():  # the gap width before a data gap is declared
+      meta['acceptable_gap']=1.5
+    self.acceptable_gap=meta['acceptable_gap'] # anything more than 1.5 times the median time separation is considered a data gap
     self.meta=meta
     self.t_units=''
     self.y_units=''
     self.binsize=min(self.delta_T())
     self.ft_norm='N/A'
-    self.acceptable_gap=1.5 # anything more than 1.5 times the median time separation is considered a data gap
     self.unpack_metadata()
     self.folded=False
     self.t_unit_string = '' if self.t_units=='' else '('+self.t_units+')'
@@ -69,7 +66,7 @@ class lightcurve(object):
 
   # Dump contents to a csv
 
-  def csv_dump(self,filename):
+  def dump(self,filename):
     k=list(self.meta.keys())
     k.sort()
     f=open(filename,'w')
@@ -105,7 +102,7 @@ class lightcurve(object):
     pl.ylabel('Rate '+self.y_unit_string)
     fi.plot_save(filename)
 
-  def quickbgplot(self,filename=None):
+  def plot_bg(self,filename=None):
     if 'b' not in self.__dict__:
        raise NotImplementedError('No background data available in '+str(self.__class__)+' object')
     pl.figure()
@@ -117,7 +114,7 @@ class lightcurve(object):
 
   # Creates a scatter plot of an unfolded lightcurve where the x-coord of each point is its phase
 
-  def folded_scatterplot(self,period,filename=None):
+  def plot_folded_scatterplot(self,period,filename=None):
     if self.folded:
       wr.warning("Can't fold data which is already folded!")
     else:
@@ -143,8 +140,6 @@ class lightcurve(object):
 
   def fourier(self,norm,normname='custom'):
     wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
-    if self.binsize==0:
-      raise DataError('No binsize provided in metadata!')
     nyquist=0.5/self.binsize
     try:
       norm=float(norm)
@@ -171,7 +166,7 @@ class lightcurve(object):
       self.ft=ft
     self.ft_freqs=np.linspace(0,nyquist,len(ft)+1)[1:]
       
-  def fourier_plot(self,filename=None):
+  def plot_fourier(self,filename=None):
     if 'ft' not in self.__dict__: self.fourier('leahy')
     pl.figure()
     pl.title(self.objname+' Fourier Spectrum')
@@ -192,7 +187,7 @@ class lightcurve(object):
     self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm)
     self.ls_freqs=np.array(freqrange)
 
-  def lomb_scargle_plot(self,log=False,filename=None):
+  def plot_lomb_scargle(self,log=False,filename=None):
     if 'ls' not in self.__dict__: self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
     pl.figure()
     pl.title(self.objname+' Lomb-Scargle Periodogram')
@@ -229,40 +224,36 @@ class lightcurve(object):
       lomb_scargle_spec=calved_lc.ls
       dynamic_spectrum[i,:]=lomb_scargle_spec
 
-    self.dynamic_ls_spectrum         = dynamic_spectrum
-    self.dynamic_ls_spectrum_tvalues = starttime+bin_separation*(np.arange(0,numbins,1.0))+binsize/2.0
-    self.dynamic_ls_spectrum_fvalues = freqrange
+#### dynamic_ls_spectrum, dynamic_ls_spectrum_tvalues, dynamic_ls_spectrum_fvalues
 
-  def lomb_scargle_dump(self,filename,header=True):
-    if 'dynamic_ls_spectrum' not in self.__dict__:
+    dynamic_ls_spectrum         = dynamic_spectrum.T
+    dynamic_ls_spectrum_tvalues = starttime+bin_separation*(np.arange(0,numbins,1.0))+binsize/2.0
+    dynamic_ls_spectrum_fvalues = freqrange
+    dmeta={'x_dimension':'Time','y_dimension':'Frequency','x_unit':self.t_units,'y_unit':self.y_units}
+    dls_data=dat.TwoD_Dataframe(dynamic_ls_spectrum_tvalues,dynamic_ls_spectrum_fvalues,dynamic_ls_spectrum,meta=dmeta)
+    self.dynamic_ls_data=dls_data
+
+  def dump_lomb_scargle_spectrogram(self,filename,header=True):
+    if 'dynamic_ls_data' not in self.__dict__:
       wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping csv dump!')
       return None
-    f=open(filename,'w')
-    if header:
-      f.write('TIME_AXIS\n')
-      for t in self.dynamic_ls_spectrum_tvalues:
-        f.write(str(t)+'\n')
-      f.write('FREQ_AXIS\n')
-      for q in self.dynamic_ls_spectrum_fvalues:
-        f.write(str(q)+'\n')
-      f.write('DATA_(FREQ_INCREASES_DOWN,_TIME_INCREASES_TO_RIGHT)\n')
-    for row in self.dynamic_ls_spectrum.T:
-      write_string=''
-      for val in row:
-        write_string+=str(val)+','
-      f.write(write_string[:-1]+'\n')
-    f.close()
+    self.dynamic_ls_data.dump(filename,header=header)
+
+  def get_lomb_scargle_spectrogram(self):
+    if 'dynamic_ls_data' not in self.__dict__:
+      wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping grabbing!')
+    return self.dynamic_ls_data
 
   def plot_lomb_scargle_spectrogram(self,colour_range='auto',filename=None,with_lc=True,with_1d_ls=True):
 
-    if 'dynamic_ls_spectrum' not in self.__dict__:
+    if 'dynamic_ls_data' not in self.__dict__:
       wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping plotting!')
       return None
-    elif np.max(self.dynamic_ls_spectrum)<=0:
+    elif self.dynamic_ls_data.get_max()<=0:
       wr.warn('Dynamic LS spectrum is empty!  Is your Acceptable Gap parameter too small?')
       return None
     if with_lc:
-      self.lomb_scargle(self.dynamic_ls_spectrum_fvalues)  # if the user wants a 1D LS plotted but hasnt made one yet, make one with the same params as the 2D LS
+      self.lomb_scargle(self.dynamic_ls_data.get_y())  # if the user wants a 1D LS plotted but hasnt made one yet, make one with the same params as the 2D LS
 
     size_ratio=4
     grid=gs.GridSpec(size_ratio+with_lc,size_ratio+with_1d_ls)
@@ -273,14 +264,14 @@ class lightcurve(object):
     if not with_lc:
       ax_main.set_xlabel('Time ('+self.t_units+')')
     ax_main.set_ylabel('Frequency ('+self.t_units+'^-1)')
-    Z=self.dynamic_ls_spectrum.T
+    Z=self.dynamic_ls_data.get_z()
     if colour_range=='auto':
       colour_min=np.min(Z[Z>0])
       colour_max=np.max(Z)
     else:
       colour_min=colour_range[0]
       colour_max=colour_range[1]
-    c=ax_main.pcolor(self.dynamic_ls_spectrum_tvalues,self.dynamic_ls_spectrum_fvalues,Z,norm=co.LogNorm(vmin=colour_min, vmax=colour_max))
+    c=self.dynamic_ls_data.log_colour_plot(colour_min=colour_min,colour_max=colour_max,ax=ax_main)
     if (not with_lc) and (not with_1d_ls):
       pl.colorbar(c,ax=ax_main)
     if with_lc:
@@ -288,7 +279,7 @@ class lightcurve(object):
       ax_lc=fig.add_subplot(grid[size_ratio,:size_ratio])
       ax_lc.plot(self.x,self.y,'k')
       ax_lc.set_ylabel('Rate '+self.y_unit_string)
-      ax_lc.set_xlim(min(self.dynamic_ls_spectrum_tvalues),max(self.dynamic_ls_spectrum_tvalues))
+      ax_lc.set_xlim(min(self.dynamic_ls_data.get_x()),max(self.dynamic_ls_data.get_x()))
       ax_lc.set_xlabel('Time ('+self.t_units+')')
     if with_1d_ls:
       ax_ls=fig.add_subplot(grid[:size_ratio,size_ratio])
@@ -297,7 +288,7 @@ class lightcurve(object):
       ax_ls.set_xlabel('L-S Power')
       ax_ls.fill_betweenx(self.ls_freqs,self.ls,0,facecolor='0.7')
       ax_ls.set_xlim(np.percentile(self.ls,25),max(self.ls*1.01))
-      ax_ls.set_ylim(min(self.dynamic_ls_spectrum_fvalues),max(self.dynamic_ls_spectrum_fvalues))
+      ax_ls.set_ylim(min(self.dynamic_ls_data.get_y()),max(self.dynamic_ls_data.get_y()))
     fi.plot_save(filename)
 
   #### These functions have an in-place version, and a -ed version which returns a new object ####
@@ -408,6 +399,9 @@ class lightcurve(object):
   def get_mean(self):
     return np.mean(self.y)
 
+  def get_std(self):
+    return np.std(self.y)
+
   def get_median(self):
     return np.median(self.y)
 
@@ -448,9 +442,9 @@ def get_tess_lc(filename):
   imeta={}
   f=fits.open(filename)
   if f[1].header['TELESCOP'][:4].upper()!='TESS':
-    raise DataError('FITS file does not appear to be from TESS')
+    raise dat.DataError('FITS file does not appear to be from TESS')
   if f[1].header['EXTNAME'].upper()!='LIGHTCURVE':
-    raise DataError('TESS FITS file does not appear to be a lightcurve')
+    raise dat.DataError('TESS FITS file does not appear to be a lightcurve')
 
   try:
     radesys=f[0].header['RADESYS'].lower()
@@ -497,9 +491,9 @@ def get_rxte_lc_from_gx(filename,binsize,min_chan=0,max_chan=255):
   imeta={}
   f=fits.open(filename)
   if f[1].header['TELESCOP'][:3].upper()!='XTE':
-    raise DataError('FITS file does not appear to be from RXTE')
+    raise dat.DataError('FITS file does not appear to be from RXTE')
   if f[1].header['DATAMODE']!='GoodXenon_2s':
-    raise DataError('RXTE FITS file does not appear to be a PCA GoodXenon file')
+    raise dat.DataError('RXTE FITS file does not appear to be a PCA GoodXenon file')
   imeta['mission']='RXTE'
   imeta['name']=f[1].header['OBJECT']
   imeta['binsize']=binsize
@@ -665,3 +659,8 @@ class phase_folder(object):
     return self.y
   def get_ye(self):
     return self.ye
+
+# ===== some stats functions =====
+
+def rms(x):
+  return (np.mean(x**2))**0.5
