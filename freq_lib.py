@@ -28,11 +28,14 @@ def leahy2rms(l,rate,bg_rate,const=2):
 
 # ======== Generalised Lomb-Scargling function =========
 
-def lomb_scargle(t,y,ye,freqs,norm='auto'):
+def lomb_scargle(t,y,ye,freqs,norm='auto',generalised=True):
 
     # Generalised L-S from Zechmeister & Kuerster, 2009, eq 5-15
-
-    w=(ye**-2)/(np.sum(ye**-2))
+    freqs=np.array(freqs)
+    w=np.ones(len(ye))
+    if generalised:
+      w[ye<=0]=0
+      w[ye>0]=(ye[ye>0]**-2)/(np.sum(ye[ye>0]**-2))
     om=freqs*2*np.pi
 
     ft_table=np.array(np.outer(om,t))

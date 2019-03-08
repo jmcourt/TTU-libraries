@@ -1,8 +1,10 @@
 import astropy.coordinates as coord
 from   astropy.io import fits
 from   astroquery.simbad import Simbad
+import file_lib as fi
 import freq_lib as frq
 from   matplotlib import colors as co
+from   matplotlib import gridspec as gs
 from   matplotlib import pyplot as pl
 import numpy as np
 import random as rn
@@ -32,10 +34,11 @@ class lightcurve(object):
     self.meta=meta
     self.t_units=''
     self.y_units=''
-    self.binsize=0
+    self.binsize=min(self.delta_T())
     self.ft_norm='N/A'
     self.acceptable_gap=1.5 # anything more than 1.5 times the median time separation is considered a data gap
     self.unpack_metadata()
+    self.folded=False
     self.t_unit_string = '' if self.t_units=='' else '('+self.t_units+')'
     self.y_unit_string = '' if self.y_units=='' else '('+self.y_units+')'
 
@@ -51,6 +54,34 @@ class lightcurve(object):
     else:
       self.mission='unknown'
 
+  # Getters
+
+  def get_x(self):
+    return self.x
+  def get_y(self):
+    return self.y
+  def get_ye(self):
+    return self.ye
+  def get_acceptable_gap(self):
+    return self.acceptable_gap
+  def set_acceptable_gap(self,gap):
+    self.acceptable_gap=gap
+
+  # Dump contents to a csv
+
+  def csv_dump(self,filename):
+    k=list(self.meta.keys())
+    k.sort()
+    f=open(filename,'w')
+    f.write('META_DATA\n')
+    for key in k:
+      if type(self.meta[key]) in (str,int,float):
+        f.write(key+':'+str(self.meta[key])+'\n')
+    f.write('SCIENCE_DATA\n')
+    for i in range(len(self.x)):
+      f.write(str(self.x[i])+','+str(self.y[i])+','+str(self.ye[i])+'\n')
+    f.close()
+
   # Self-explanatory quick-and-dirty plot machine.  BG plot checks if bg data is available, and dies if not
 
   def zero_time(self):
@@ -59,18 +90,22 @@ class lightcurve(object):
        # Should be able to zero a lightcurve of length 0.  This matters for dynamic spectra
 
   def quickplot(self,filename=None):
+    if self.folded:
+      x=np.append(self.x,self.x+1)
+      y=np.append(self.y,self.y)
+      ye=np.append(self.ye,self.ye)
+    else:
+      x=self.x
+      y=self.y
+      ye=self.ye
     pl.figure()
     pl.title(self.objname+' Quick Plot')
-    pl.errorbar(self.x,self.y,yerr=self.ye)
+    pl.errorbar(x,y,yerr=ye)
     pl.xlabel('Time '+self.t_unit_string)
     pl.ylabel('Rate '+self.y_unit_string)
-    if filename==None:
-      pl.show(block=False)
-    else:
-      pl.savefig(filename)
-      pl.close()
+    fi.plot_save(filename)
 
-  def quickbgplot(self):
+  def quickbgplot(self,filename=None):
     if 'b' not in self.__dict__:
        raise NotImplementedError('No background data available in '+str(self.__class__)+' object')
     pl.figure()
@@ -78,12 +113,25 @@ class lightcurve(object):
     pl.errorbar(self.bx,self.b,yerr=self.be,label='bg')
     pl.errorbar(self.x,self.y,yerr=self.ye,label='phot')
     pl.legend()
-    pl.show(block=False)
+    fi.plot_save(filename)
+
+  # Creates a scatter plot of an unfolded lightcurve where the x-coord of each point is its phase
+
+  def folded_scatterplot(self,period,filename=None):
+    if self.folded:
+      wr.warning("Can't fold data which is already folded!")
+    else:
+      p=(self.x%period)/period
+      pl.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=0.01,color='k')
+      fi.plot_save(filename)
 
   # return approx location of significant data gaps (>25* median time separation by default)
 
+  def delta_T(self):
+    return self.x[1:]-self.x[:-1]
+
   def get_data_gaps(self):
-    delta_T=self.x[1:]-self.x[:-1]
+    delta_T=self.delta_T()
     acceptable_gap=self.acceptable_gap*np.median(delta_T)
     gap_mask=delta_T>acceptable_gap
     gap_starts=self.x[:-1][gap_mask]
@@ -95,9 +143,9 @@ class lightcurve(object):
 
   def fourier(self,norm,normname='custom'):
     wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
-    nyquist=0.5/self.binsize
     if self.binsize==0:
       raise DataError('No binsize provided in metadata!')
+    nyquist=0.5/self.binsize
     try:
       norm=float(norm)
       custnorm=True
@@ -123,14 +171,14 @@ class lightcurve(object):
       self.ft=ft
     self.ft_freqs=np.linspace(0,nyquist,len(ft)+1)[1:]
       
-  def fourier_plot(self):
+  def fourier_plot(self,filename=None):
     if 'ft' not in self.__dict__: self.fourier('leahy')
     pl.figure()
     pl.title(self.objname+' Fourier Spectrum')
     pl.plot(self.ft_freqs,self.ft)
     pl.ylabel('"'+self.ft_norm+'"-normalised power')
     pl.xlabel('Frequency ('+self.t_units+'^-1)')
-    pl.show(block=False)
+    fi.plot_save(filename)
 
   def fourier_spectrogram(self,binsize,bin_separation):
     raise NotImplementedError('Fourier Spectrogram method not coded yet!')
@@ -144,21 +192,26 @@ class lightcurve(object):
     self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm)
     self.ls_freqs=np.array(freqrange)
 
-  def lomb_scargle_plot(self):
+  def lomb_scargle_plot(self,log=False,filename=None):
     if 'ls' not in self.__dict__: self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
     pl.figure()
     pl.title(self.objname+' Lomb-Scargle Periodogram')
-    pl.plot(self.ls_freqs,self.ls)
+    if log:
+      pl.semilogy(self.ls_freqs,self.ls)
+    else:
+      pl.plot(self.ls_freqs,self.ls)
     pl.ylabel('Lomb-Scargle power')
     pl.xlabel('Frequency ('+self.t_units+'^-1)')
-    pl.show(block=False)
+    fi.plot_save(filename)
 
   def lomb_scargle_spectrogram(self,freqrange,binsize,bin_separation):
     self.lsparams={'freqrange':freqrange,'binsize':binsize,'bin_separation':bin_separation}
     min_points=80
     progress=0
     starttime=self.x[0]
-    numbins=int(((self.x[-1]-starttime)-binsize)//bin_separation)
+    numbins=max(int(((self.x[-1]-starttime)-binsize)//bin_separation),0)
+    if numbins==0:
+      raise ValueError('Bin width longer than data set!')
     lsnorm=(len(self.y)-1)/(2.0*numbins)
     dynamic_spectrum=np.zeros((numbins,len(freqrange)))
     data_gaps=self.get_data_gaps()
@@ -171,7 +224,7 @@ class lightcurve(object):
       calve_ed=calve_st+binsize
       if is_overlap((calve_st,calve_ed),data_gaps):
         continue
-      calved_lc=self.calve(calve_st,calve_ed)
+      calved_lc=self.calved(calve_st,calve_ed)
       calved_lc.lomb_scargle(freqrange,norm=lsnorm)
       lomb_scargle_spec=calved_lc.ls
       dynamic_spectrum[i,:]=lomb_scargle_spec
@@ -180,32 +233,87 @@ class lightcurve(object):
     self.dynamic_ls_spectrum_tvalues = starttime+bin_separation*(np.arange(0,numbins,1.0))+binsize/2.0
     self.dynamic_ls_spectrum_fvalues = freqrange
 
-  def plot_lomb_scargle_spectrogram(self,colour_range='auto',filename=None):
+  def lomb_scargle_dump(self,filename,header=True):
+    if 'dynamic_ls_spectrum' not in self.__dict__:
+      wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping csv dump!')
+      return None
+    f=open(filename,'w')
+    if header:
+      f.write('TIME_AXIS\n')
+      for t in self.dynamic_ls_spectrum_tvalues:
+        f.write(str(t)+'\n')
+      f.write('FREQ_AXIS\n')
+      for q in self.dynamic_ls_spectrum_fvalues:
+        f.write(str(q)+'\n')
+      f.write('DATA_(FREQ_INCREASES_DOWN,_TIME_INCREASES_TO_RIGHT)\n')
+    for row in self.dynamic_ls_spectrum.T:
+      write_string=''
+      for val in row:
+        write_string+=str(val)+','
+      f.write(write_string[:-1]+'\n')
+    f.close()
+
+  def plot_lomb_scargle_spectrogram(self,colour_range='auto',filename=None,with_lc=True,with_1d_ls=True):
+
     if 'dynamic_ls_spectrum' not in self.__dict__:
       wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping plotting!')
+      return None
+    elif np.max(self.dynamic_ls_spectrum)<=0:
+      wr.warn('Dynamic LS spectrum is empty!  Is your Acceptable Gap parameter too small?')
+      return None
+    if with_lc:
+      self.lomb_scargle(self.dynamic_ls_spectrum_fvalues)  # if the user wants a 1D LS plotted but hasnt made one yet, make one with the same params as the 2D LS
+
+    size_ratio=4
+    grid=gs.GridSpec(size_ratio+with_lc,size_ratio+with_1d_ls)
+
+    fig=pl.figure(figsize=(20,20))
+    ax_main=fig.add_subplot(grid[:size_ratio,:size_ratio])
+    ax_main.set_title(self.objname+' Dynamic Lomb-Scargle Periodogram')
+    if not with_lc:
+      ax_main.set_xlabel('Time ('+self.t_units+')')
+    ax_main.set_ylabel('Frequency ('+self.t_units+'^-1)')
+    Z=self.dynamic_ls_spectrum.T
+    if colour_range=='auto':
+      colour_min=np.min(Z[Z>0])
+      colour_max=np.max(Z)
     else:
-      pl.figure(figsize=(20,20))
-      pl.title(self.objname+' Dynamic Lomb-Scargle Periodogram')
-      pl.xlabel('Time ('+self.t_units+')')
-      pl.ylabel('Frequency ('+self.t_units+'^-1)')
-      Z=self.dynamic_ls_spectrum.T
-      if colour_range=='auto':
-        colour_min=np.min(Z[Z>0])
-        colour_max=np.max(Z)
-      else:
-        colour_min=colour_range[0]
-        colour_max=colour_range[1]
-      c=pl.pcolor(self.dynamic_ls_spectrum_tvalues,self.dynamic_ls_spectrum_fvalues,Z,norm=co.LogNorm(vmin=colour_min, vmax=colour_max))
-      pl.colorbar(c)
-      if filename==None:
-        pl.show(block=False)
-      else:
-        pl.savefig(filename)
-        pl.close()
+      colour_min=colour_range[0]
+      colour_max=colour_range[1]
+    c=ax_main.pcolor(self.dynamic_ls_spectrum_tvalues,self.dynamic_ls_spectrum_fvalues,Z,norm=co.LogNorm(vmin=colour_min, vmax=colour_max))
+    if (not with_lc) and (not with_1d_ls):
+      pl.colorbar(c,ax=ax_main)
+    if with_lc:
+      ax_main.set_xticks([])
+      ax_lc=fig.add_subplot(grid[size_ratio,:size_ratio])
+      ax_lc.plot(self.x,self.y,'k')
+      ax_lc.set_ylabel('Rate '+self.y_unit_string)
+      ax_lc.set_xlim(min(self.dynamic_ls_spectrum_tvalues),max(self.dynamic_ls_spectrum_tvalues))
+      ax_lc.set_xlabel('Time ('+self.t_units+')')
+    if with_1d_ls:
+      ax_ls=fig.add_subplot(grid[:size_ratio,size_ratio])
+      ax_ls.semilogx(self.ls,self.ls_freqs,'k')
+      ax_ls.set_yticks([])
+      ax_ls.set_xlabel('L-S Power')
+      ax_ls.fill_betweenx(self.ls_freqs,self.ls,0,facecolor='0.7')
+      ax_ls.set_xlim(np.percentile(self.ls,25),max(self.ls*1.01))
+      ax_ls.set_ylim(min(self.dynamic_ls_spectrum_fvalues),max(self.dynamic_ls_spectrum_fvalues))
+    fi.plot_save(filename)
+
+  #### These functions have an in-place version, and a -ed version which returns a new object ####
 
   # Returns a subset of the lightcurve between t=stime and t=etime.  New lc retains class of parent
 
   def calve(self,stime,etime):
+    with wr.catch_warnings():
+      wr.filterwarnings('ignore',message='invalid value encountered in less')
+      wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
+      mask=np.logical_and(self.x>=stime,self.x<etime)
+    self.x=self.x[mask]
+    self.y=self.y[mask]
+    self.ye=self.ye[mask]
+
+  def calved(self,stime,etime):
     with wr.catch_warnings():
       wr.filterwarnings('ignore',message='invalid value encountered in less')
       wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
@@ -215,21 +323,33 @@ class lightcurve(object):
     newye=self.ye[mask]
     return self.__class__(newx,newy,newye,self.meta)
 
-  # Attempts to detrend the data for a given window size
+  # Attempts to detrend the data for a given window size.
 
-  def detrend(self,window_size):
-    #ytrend=np.zeros(len(self.y))
-    #for i in range(len(self.y)):
-    #  window=np.logical_and(self.x>=self.x[i]-time_window/2,self.x<self.x[i]+time_window/2)
-    #  ytrend[i]=np.median(self.y[window])
-    ws=int(window_size)
-    if ws%2==0:
-      ws+=1
-    with wr.catch_warnings():
-      wr.filterwarnings('ignore')
-      self.y=self.y-sgnl.savgol_filter(self.y,ws,3)      
+  def detrend(self,window_size,method='savgol'):
+    newy=self.y-smart_smooth(self,window_size,method)
+    self.y=newy
+
+  def detrended(self,window_size,method='savgol'):
+    newy=self.y-smart_smooth(self,window_size,method)
+    return self.__class__(self.x,newy,self.y,self.meta)
+
+  # smooths the data for a given window size.  Sorta the opposite of above.
+
+  def smooth(self,window_size,method='savgol'):
+    newy=smart_smooth(self,window_size,method)
+    self.y=newy
+
+  def smoothed(self,window_size,method='savgol'):
+    newy=smart_smooth(self,window_size,method)
+    return self.__class__(self.x,newy,self.y,self.meta)
 
   # Shuffler; returns the y,ye pairs in a random order
+
+  def shuffle(self):
+    indices=np.arange(len(self.x),dtype=int)
+    rn.shuffle(indices)
+    self.y=self.y[indices]
+    self.ye=self.ye[indices]
 
   def shuffled(self):
     indices=np.arange(len(self.x),dtype=int)
@@ -237,6 +357,59 @@ class lightcurve(object):
     newy=self.y[indices]
     newye=self.ye[indices]
     return self.__class__(self.x,newy,newye,self.meta)
+
+  # Phase-folder!  Does a bog-standard fixed period phase-folding
+
+  def phase_fold(self,period,phase_bins=100):
+    folder=phase_folder(self,period,phase_bins)
+    self.x=folder.get_x()
+    self.y=folder.get_y()
+    self.ye=folder.get_ye()
+    self.meta['folded_period']=period
+    self.folded=True
+
+  def phase_folded(self,period,phase_bins=100):
+    folder=phase_folder(self,period,phase_bins)
+    newx=folder.get_x()
+    newy=folder.get_y()
+    newye=folder.get_ye()
+    newmeta=self.meta
+    newmeta['folded_period']=period
+    newobj=self.__class__(newx,newy,newye,newmeta)
+    newobj.folded=True
+    return newobj
+
+  # Some super basic arithmetic functions for manipulating lightcurves, i.e. "add a constant", "divide by a constant"
+
+  def multiply_by_constant(self,constant):
+    self.y=self.y*constant
+    self.ye=self.ye*constant
+
+  def multiplied_by_constant(self,constant):
+    newy=self.y*constant
+    newye=self.ye*constant
+    return self.__class__(self.x,newy,newye,self.meta)
+
+  def add_constant(self,constant):
+    self.y=self.y+constant
+
+  def added_constant(self,constant):
+    newy=self.y+constant
+    return self.__class__(self.x,newy,self.ye,self.meta)
+
+  # Some basic statistical properties
+
+  def get_min(self):
+    return np.min(self.y)
+
+  def get_max(self):
+    return np.max(self.y)
+
+  def get_mean(self):
+    return np.mean(self.y)
+
+  def get_median(self):
+    return np.median(self.y)
 
 class tess_lightcurve(lightcurve):
   def unpack_metadata(self):
@@ -294,6 +467,10 @@ def get_tess_lc(filename):
     except KeyError:
       oname='UNKNOWN'
       wr.warn('Could not find Object Name')
+  try:
+    imeta['tess_id']=f[1].header['OBJECT']
+  except:
+    imeta['tess_id']='UNKNOWN'
   try:
     sname=' (Sector '+str(f[0].header['SECTOR'])+')'
   except:
@@ -369,6 +546,40 @@ def get_rxte_lc_from_gx(filename,binsize,min_chan=0,max_chan=255):
 
   return rxte_lightcurve(x,y,ye,meta=imeta)
 
+###############################################################################
+
+def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=',',meta_sep=':'):
+  f=open(filename,'r')
+  imeta={}
+  x=[]
+  y=[]
+  ye=[]
+  mxind=max(x_ind,y_ind,e_ind)
+  for line in f:
+    if meta_sep in line:
+      l=line.split(meta_sep)
+      if len(l)!=2:
+        continue
+      mkey=l[0]
+      mval=l[1][:-1]
+      try:
+        mval=float(mval)
+        if mval%1==0:
+          mval=int(mval)
+      except:
+        pass
+      imeta[mkey]=mval
+    elif data_sep in line:
+      l=line.split(data_sep)
+      if len(l)<=mxind:
+        continue
+      x.append(float(l[x_ind]))
+      y.append(float(l[y_ind]))
+      ye.append(float(l[e_ind]))
+  f.close()
+  return lightcurve(x,y,ye,meta=imeta)
+
+
 # ======= General purpose lightcurvey gubbins ======
 
 def boolean_words_to_number(words,key,big_endian=False):
@@ -380,8 +591,6 @@ def boolean_words_to_number(words,key,big_endian=False):
   if big_endian:
     decoder=decoder[::-1]
   decoded_words=np.sum(words*decoder,axis=1)
-  print(np.min(decoded_words))
-  exit()
   return decoded_words
 
 def is_overlap(user_range,test_ranges):
@@ -392,3 +601,67 @@ def is_overlap(user_range,test_ranges):
     if np.logical_not(test_range[0]>user_range[1] or user_range[0]>test_range[1]):
       return True
   return False
+
+# ======= Smoothing functions =======
+
+def smart_smooth(lc,window_size,method): # takes a lightcurve-like object
+  method=method.lower()
+  if method=='savgol':
+    return smart_savgol(lc,window_size)
+  elif method=='time_median':
+    return time_median_smooth(lc,window_size)
+  else:
+    raise NotImplementedError('Unknown smoothing method "'+method+'"!')
+
+def smart_savgol(lc,window_size):
+  y=lc.get_y()
+  ws=int(window_size)
+  if ws%2==0:
+    ws+=1
+  with wr.catch_warnings():
+    wr.filterwarnings('ignore')
+    return sgnl.savgol_filter(y,ws,3)
+
+def time_median_smooth(lc,window_size):
+  y=lc.get_y()
+  x=lc.get_x()
+  ws2=window_size/2.0
+  length=len(x)
+  newy=np.zeros(length)
+  for i in range(length):
+    mask=np.logical_and(x>=x[i]-ws2,x<x[i]+ws2)
+    newy[i]=np.median(y[mask])
+  return newy
+
+# ====== Folding! ======
+
+class phase_folder(object):
+  def __init__(self,lc,period,phase_bins,standev_errors=True):    
+    # Two different errors can be returned.  Default is the standard deviation of the distribution of y in each bin.  Otherwise can just propagate errors normally.
+    x=lc.get_x()
+    y=lc.get_y()
+    ye=lc.get_ye()
+    px=(x%period)/period
+    py=np.zeros(phase_bins)
+    pye=np.zeros(phase_bins)
+    for i in range(phase_bins):
+      lower_phase=i/phase_bins
+      upper_phase=(i+1)/phase_bins
+      mask=np.logical_and(px>=lower_phase,px<upper_phase)
+      py[i]=np.mean(y[mask])
+      if standev_errors:
+        pye[i]=np.std(y[mask])
+      else:
+        pye[i]=np.sqrt(np.sum(ye[mask]**2)/np.sum(mask))
+    self.x=np.arange(0,1,1/phase_bins)
+    self.y=py
+    self.ye=pye
+    self.period=period
+    self.phase_bins=phase_bins
+
+  def get_x(self):
+    return self.x
+  def get_y(self):
+    return self.y
+  def get_ye(self):
+    return self.ye
