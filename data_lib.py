@@ -16,7 +16,6 @@ class TwoD_Dataframe(object):
     zxlen=zdims[1]
     zylen=zdims[0]
 
-    print(xlen,zxlen,ylen,zylen)
     if xlen==zxlen and ylen==zylen:
       self.z=zvalues
     elif xlen==zylen and ylen==zxlen:
@@ -26,8 +25,6 @@ class TwoD_Dataframe(object):
       raise DataError('Matrix does not match x and y dimensions in TwoD_Dataframe!')
     self.x=xvalues
     self.y=yvalues
-    print(len(self.x),len(self.y),np.shape(self.z))
-    print(np.shape(self.z)[0])
     if 'x_dimension' in meta.keys():
       self.x_dim=meta['x_dimension']
     else:

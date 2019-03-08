@@ -51,7 +51,7 @@ class lightcurve(object):
     else:
       self.mission='unknown'
 
-  # Getters
+  # Basic getters & setters
 
   def get_x(self):
     return self.x
@@ -61,6 +61,15 @@ class lightcurve(object):
     return self.ye
   def get_acceptable_gap(self):
     return self.acceptable_gap
+  def get_xrange(self):
+    return self.x[-1]-self.x[0]
+  def get_yrange(self):
+    return self.y[-1]-self.y[0]
+  def get_start_time(self):
+    return self.x[0]
+  def get_end_time(self):
+    return self.x[-1]
+
   def set_acceptable_gap(self,gap):
     self.acceptable_gap=gap
 
@@ -83,7 +92,7 @@ class lightcurve(object):
 
   def zero_time(self):
     if len(self.x)>0:
-       self.x=self.x-self.x[0]
+       self.x=self.x-self.get_start_time()
        # Should be able to zero a lightcurve of length 0.  This matters for dynamic spectra
 
   def quickplot(self,filename=None):
@@ -136,6 +145,15 @@ class lightcurve(object):
     gaps=[(gap_starts[i],gap_ends[i]) for i in range(len(gap_starts))]
     return gaps
 
+  # RMS and associated plots
+
+  def get_rms(self):
+    return rms(self.y)
+
+  def rms_over_time(self,window):
+    n_windows=int(self.get_xrange()/window)
+    start=self.get_start_time()
+    
   # Some general Fourier methods
 
   def fourier(self,norm,normname='custom'):
@@ -200,11 +218,10 @@ class lightcurve(object):
     fi.plot_save(filename)
 
   def lomb_scargle_spectrogram(self,freqrange,binsize,bin_separation):
-    self.lsparams={'freqrange':freqrange,'binsize':binsize,'bin_separation':bin_separation}
     min_points=80
     progress=0
-    starttime=self.x[0]
-    numbins=max(int(((self.x[-1]-starttime)-binsize)//bin_separation),0)
+    starttime=self.get_start_time()
+    numbins=max(int(((self.get_xrange())-binsize)//bin_separation),0)
     if numbins==0:
       raise ValueError('Bin width longer than data set!')
     lsnorm=(len(self.y)-1)/(2.0*numbins)
@@ -223,9 +240,6 @@ class lightcurve(object):
       calved_lc.lomb_scargle(freqrange,norm=lsnorm)
       lomb_scargle_spec=calved_lc.ls
       dynamic_spectrum[i,:]=lomb_scargle_spec
-
-#### dynamic_ls_spectrum, dynamic_ls_spectrum_tvalues, dynamic_ls_spectrum_fvalues
-
     dynamic_ls_spectrum         = dynamic_spectrum.T
     dynamic_ls_spectrum_tvalues = starttime+bin_separation*(np.arange(0,numbins,1.0))+binsize/2.0
     dynamic_ls_spectrum_fvalues = freqrange
@@ -351,6 +365,9 @@ class lightcurve(object):
 
   # Phase-folder!  Does a bog-standard fixed period phase-folding
 
+  def get_phases(self,period):
+    return (self.x%period)/period
+
   def phase_fold(self,period,phase_bins=100):
     folder=phase_folder(self,period,phase_bins)
     self.x=folder.get_x()
@@ -416,7 +433,7 @@ class tess_lightcurve(lightcurve):
       wr.filterwarnings('ignore',message='invalid value encountered in less_equal')
       wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
       if len(self.x)>0:
-         bgmask=np.logical_and(abx>=self.x[0],abx<=self.x[-1])
+         bgmask=np.logical_and(abx>=self.get_start_time(),abx<=self.get_end_time())
       else:
          bgmask=[]   # Should still be able to initialise a TESS lightcurve of length 0.  This matters for dynamical spectra
     self.bx=abx[bgmask].astype(float)  # clipping bg lightcurve to same length as main lc, useful after calving
