@@ -1,6 +1,7 @@
 import astropy.coordinates as coord
 from   astropy.io import fits
 from   astroquery.simbad import Simbad
+import copy
 import data_lib as dat
 import file_lib as fi
 import freq_lib as frq
@@ -32,7 +33,10 @@ class lightcurve(object):
     self.meta=meta
     self.t_units=''
     self.y_units=''
-    self.binsize=min(self.delta_T())
+    if self.is_empty():
+      self.binsize=0
+    else:
+      self.binsize=min(self.delta_T())
     self.ft_norm='N/A'
     self.unpack_metadata()
     self.folded=False
@@ -50,6 +54,16 @@ class lightcurve(object):
       self.mission=self.meta['mission']
     else:
       self.mission='unknown'
+
+  # Copy self
+
+  def copy(self):
+    return copy.deepcopy(self)
+
+  # Simple data checks
+
+  def is_empty(self):
+    return len(self.x)==0
 
   # Basic getters & setters
 
@@ -125,7 +139,7 @@ class lightcurve(object):
 
   def plot_folded_scatterplot(self,period,filename=None):
     if self.folded:
-      wr.warning("Can't fold data which is already folded!")
+      wr.warning("Can't fold that which is already folded!")
     else:
       p=(self.x%period)/period
       pl.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=0.01,color='k')
@@ -153,6 +167,53 @@ class lightcurve(object):
   def rms_over_time(self,window):
     n_windows=int(self.get_xrange()/window)
     start=self.get_start_time()
+    rx=np.zeros(n_windows)
+    ry=np.zeros(n_windows)
+    rr=np.zeros(n_windows)-1
+    data_gaps=self.get_data_gaps()
+    for i in range(n_windows):
+      w_start=start+i*window
+      w_end  =start+(i+1)*window
+      if is_overlap((w_start,w_end),data_gaps):
+        continue
+      section=self.calved(w_start,w_end)
+      rx[i]=section.get_start_time()
+      ry[i]=section.get_mean()
+      rr[i]=section.get_rms()  # NOTE, the RMS values are in RR, NOT RY!!  RY is for meaned stuff!
+    mask=rr>=0  # RMS must be positive!  Also filters out all the skipped points cause of that cheeky -1 on the rr assignment line
+    self.rms_over_time_x=rx[mask]
+    self.rms_over_time_y=ry[mask]
+    self.rms_over_time_r=rr[mask]
+
+  def plot_rms_over_time(self,fractional=False,filename=None):
+    if 'rms_over_time_x' not in self.__dict__:
+      wr.warn('RMS over time plot not prepared!  Skipping plot!  Prepare with rms_over_time')
+    pl.figure()
+    pl.title(self.objname+' RMS over Time Plot')
+    if fractional:
+      y=self.rms_over_time_r/self.rms_over_time_y
+      pl.ylabel('Fractional RMS')
+    else:
+      y=self.rms_over_time_r
+      pl.ylabel('RMS')
+    pl.xlabel('Time '+self.t_unit_string)
+    pl.plot(self.rms_over_time_x,y)
+    fi.plot_save(filename)
+
+  def plot_rms_over_rate(self,fractional=False,filename=None):
+    if 'rms_over_time_x' not in self.__dict__:
+      wr.warn('RMS over time plot not prepared!  Skipping plot!  Prepare with rms_over_time')
+    pl.figure()
+    pl.title(self.objname+' RMS over Time Plot')
+    if fractional:
+      y=self.rms_over_time_r/self.rms_over_time_y
+      pl.ylabel('Fractional RMS')
+    else:
+      y=self.rms_over_time_r
+      pl.ylabel('RMS')
+    pl.xlabel('Rate '+self.y_unit_string)
+    pl.scatter(self.rms_over_time_y,y)
+    fi.plot_save(filename)
     
   # Some general Fourier methods
 
@@ -514,7 +575,7 @@ def get_rxte_lc_from_gx(filename,binsize,min_chan=0,max_chan=255):
   imeta['mission']='RXTE'
   imeta['name']=f[1].header['OBJECT']
   imeta['binsize']=binsize
-  photonlist=np.array([f[1].data['TIME']])
+  photonlist=np.array(f[1].data['TIME'])
   photon_words=np.array(f[1].data.field(1))
 
   if min_chan<0:min_chan=0
@@ -533,14 +594,10 @@ def get_rxte_lc_from_gx(filename,binsize,min_chan=0,max_chan=255):
   t_end  =f[1].header['TSTOP']
   t_interval=t_end-t_start
   x=np.arange(t_start,t_end,binsize)
-  testx_s=x[:,np.newaxis]
-  testx_e=testx_s+binsize
-  if binsize<0.1:
-    wr.warn('The way I pack photons in bins tends to memerror for small bin sizes.  Maybe play with np.hist?')
-  boolean_less=np.less(photonlist,testx_e)
-  boolean_greq=np.greater_equal(photonlist,testx_s)
-  boolean_master=np.logical_and(boolean_less,boolean_greq) # a 2D array, #photons by #bins, with a True or False indicating whether than photon should be in that bin
-  counts=np.sum(boolean_master,axis=1) # number of photons in each bin
+  bin_x=np.arange(0,t_interval,binsize)   # a normalised time used for binning, to prevent float errors
+  bin_edges=np.append(bin_x,[t_interval])
+  counts=np.histogram(photonlist-t_start,bins=bin_edges)[0] # X axis plus the right-hand edge of the last bin
+
   y=counts/binsize
   ye=(counts**0.5)/binsize
 
@@ -680,4 +737,4 @@ class phase_folder(object):
 # ===== some stats functions =====
 
 def rms(x):
-  return (np.mean(x**2))**0.5
+  return (np.mean((x-np.mean(x))**2))**0.5
