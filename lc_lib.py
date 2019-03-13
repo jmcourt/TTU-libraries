@@ -398,7 +398,6 @@ class lightcurve(object):
       both_bg=True
     else:
       both_bg=False
-    print(both_bg)
     if lc.get_start_time()>self.get_end_time():
       self.x=np.append(self.x,lc.x)
       self.y=np.append(self.y,lc.y)
