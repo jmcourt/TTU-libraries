@@ -106,10 +106,19 @@ class lightcurve(object):
 
   def zero_time(self):
     if len(self.x)>0:
-       self.x=self.x-self.get_start_time()
-       # Should be able to zero a lightcurve of length 0.  This matters for dynamic spectra
+      start_time=self.get_start_time()
+      self.x=self.x-start_time
+      # Should be able to zero a lightcurve of length 0.  This matters for dynamic spectra
+    else:
+      start_time=0
+    self.shift_gtis(-start_time)
+    if 'b' in self.__dict__:
+      self.bx=self.bx-start_time
 
-  def quickplot(self,filename=None):
+  def shift_gtis(self,shift):
+    pass    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
+
+  def quickplot(self,output=None,errors=True):
     if self.folded:
       x=np.append(self.x,self.x+1)
       y=np.append(self.y,self.y)
@@ -118,32 +127,36 @@ class lightcurve(object):
       x=self.x
       y=self.y
       ye=self.ye
-    pl.figure()
-    pl.title(self.objname+' Quick Plot')
-    pl.errorbar(x,y,yerr=ye)
-    pl.xlabel('Time '+self.t_unit_string)
-    pl.ylabel('Rate '+self.y_unit_string)
-    fi.plot_save(filename)
+    ax=fi.filter_axes(output)
+    ax.set_title(self.objname+' Quick Plot')
+    if errors:
+      ax.errorbar(x,y,yerr=ye)
+    else:
+      ax.plot(x,y)
+    ax.set_xlabel('Time '+self.t_unit_string)
+    ax.set_ylabel('Rate '+self.y_unit_string)
+    fi.plot_save(output)
 
-  def plot_bg(self,filename=None):
+  def plot_bg(self,output=None):
     if 'b' not in self.__dict__:
        raise NotImplementedError('No background data available in '+str(self.__class__)+' object')
-    pl.figure()
-    pl.title(self.objname+' bg Quick Plot')
-    pl.errorbar(self.bx,self.b,yerr=self.be,label='bg')
-    pl.errorbar(self.x,self.y,yerr=self.ye,label='phot')
-    pl.legend()
-    fi.plot_save(filename)
+    ax=fi.filter_axes(output)
+    ax.set_title(self.objname+' bg Quick Plot')
+    ax.errorbar(self.bx,self.b,yerr=self.be,label='bg')
+    ax.errorbar(self.x,self.y,yerr=self.ye,label='phot')
+    ax.legend()
+    fi.plot_save(output)
 
   # Creates a scatter plot of an unfolded lightcurve where the x-coord of each point is its phase
 
-  def plot_folded_scatterplot(self,period,filename=None):
+  def plot_folded_scatterplot(self,period,output=None):
     if self.folded:
       wr.warning("Can't fold that which is already folded!")
     else:
+      ax=fi.filter_axes(output)
       p=(self.x%period)/period
-      pl.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=0.01,color='k')
-      fi.plot_save(filename)
+      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=0.01,color='k')
+      fi.plot_save(output)
 
   # return approx location of significant data gaps (>25* median time separation by default)
 
@@ -182,38 +195,38 @@ class lightcurve(object):
       rr[i]=section.get_rms()  # NOTE, the RMS values are in RR, NOT RY!!  RY is for meaned stuff!
     mask=rr>=0  # RMS must be positive!  Also filters out all the skipped points cause of that cheeky -1 on the rr assignment line
     self.rms_over_time_x=rx[mask]
-    self.rms_over_time_y=ry[mask]
+    self.rms_over_time_y=np.abs(ry)[mask]
     self.rms_over_time_r=rr[mask]
 
-  def plot_rms_over_time(self,fractional=False,filename=None):
+  def plot_rms_over_time(self,fractional=False,output=None):
     if 'rms_over_time_x' not in self.__dict__:
       wr.warn('RMS over time plot not prepared!  Skipping plot!  Prepare with rms_over_time')
-    pl.figure()
-    pl.title(self.objname+' RMS over Time Plot')
+    ax=fi.filter_axes(output)
+    ax.set_title(self.objname+' RMS over Time Plot')
     if fractional:
       y=self.rms_over_time_r/self.rms_over_time_y
-      pl.ylabel('Fractional RMS')
+      ax.set_ylabel('Fractional RMS')
     else:
       y=self.rms_over_time_r
-      pl.ylabel('RMS')
-    pl.xlabel('Time '+self.t_unit_string)
-    pl.plot(self.rms_over_time_x,y)
-    fi.plot_save(filename)
+      ax.set_ylabel('RMS')
+    ax.set_xlabel('Time '+self.t_unit_string)
+    ax.plot(self.rms_over_time_x,y)
+    fi.plot_save(output)
 
-  def plot_rms_over_rate(self,fractional=False,filename=None):
+  def plot_rms_over_rate(self,fractional=False,output=None):
     if 'rms_over_time_x' not in self.__dict__:
       wr.warn('RMS over time plot not prepared!  Skipping plot!  Prepare with rms_over_time')
-    pl.figure()
-    pl.title(self.objname+' RMS over Time Plot')
+    ax=fi.filter_axes(output)
+    ax.set_title(self.objname+' RMS over Time Plot')
     if fractional:
       y=self.rms_over_time_r/self.rms_over_time_y
-      pl.ylabel('Fractional RMS')
+      ax.set_ylabel('Fractional RMS')
     else:
       y=self.rms_over_time_r
-      pl.ylabel('RMS')
-    pl.xlabel('Rate '+self.y_unit_string)
-    pl.scatter(self.rms_over_time_y,y)
-    fi.plot_save(filename)
+      ax.set_ylabel('RMS')
+    ax.set_xlabel('Rate '+self.y_unit_string)
+    ax.scatter(self.rms_over_time_y,y)
+    fi.plot_save(output)
     
   # Some general Fourier methods
 
@@ -245,14 +258,14 @@ class lightcurve(object):
       self.ft=ft
     self.ft_freqs=np.linspace(0,nyquist,len(ft)+1)[1:]
       
-  def plot_fourier(self,filename=None):
+  def plot_fourier(self,output=None):
     if 'ft' not in self.__dict__: self.fourier('leahy')
-    pl.figure()
-    pl.title(self.objname+' Fourier Spectrum')
-    pl.plot(self.ft_freqs,self.ft)
-    pl.ylabel('"'+self.ft_norm+'"-normalised power')
-    pl.xlabel('Frequency ('+self.t_units+'^-1)')
-    fi.plot_save(filename)
+    ax=fi.filter_axes(output)
+    ax.set_title(self.objname+' Fourier Spectrum')
+    ax.plot(self.ft_freqs,self.ft)
+    ax.set_ylabel('"'+self.ft_norm+'"-normalised power')
+    ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
+    fi.plot_save(output)
 
   def fourier_spectrogram(self,binsize,bin_separation):
     raise NotImplementedError('Fourier Spectrogram method not coded yet!')
@@ -266,17 +279,17 @@ class lightcurve(object):
     self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm)
     self.ls_freqs=np.array(freqrange)
 
-  def plot_lomb_scargle(self,log=False,filename=None):
+  def plot_lomb_scargle(self,log=False,output=None):
     if 'ls' not in self.__dict__: self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
-    pl.figure()
-    pl.title(self.objname+' Lomb-Scargle Periodogram')
+    ax=fi.filter_axes(output)
+    ax.set_title(self.objname+' Lomb-Scargle Periodogram')
     if log:
-      pl.semilogy(self.ls_freqs,self.ls)
+      ax.semilogy(self.ls_freqs,self.ls)
     else:
-      pl.plot(self.ls_freqs,self.ls)
-    pl.ylabel('Lomb-Scargle power')
-    pl.xlabel('Frequency ('+self.t_units+'^-1)')
-    fi.plot_save(filename)
+      ax.plot(self.ls_freqs,self.ls)
+    ax.set_ylabel('Lomb-Scargle power')
+    ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
+    fi.plot_save(output)
 
   def lomb_scargle_spectrogram(self,freqrange,binsize,bin_separation):
     min_points=80
@@ -352,7 +365,7 @@ class lightcurve(object):
     if with_lc:
       ax_main.set_xticks([])
       ax_lc=fig.add_subplot(grid[size_ratio,:size_ratio])
-      ax_lc.plot(self.x,self.y,'k')
+      self.quickplot(output=ax_lc)
       ax_lc.set_ylabel('Rate '+self.y_unit_string)
       ax_lc.set_xlim(min(self.dynamic_ls_data.get_x()),max(self.dynamic_ls_data.get_x()))
       ax_lc.set_xlabel('Time ('+self.t_units+')')
@@ -365,6 +378,45 @@ class lightcurve(object):
       ax_ls.set_xlim(np.percentile(self.ls,25),max(self.ls*1.01))
       ax_ls.set_ylim(min(self.dynamic_ls_data.get_y()),max(self.dynamic_ls_data.get_y()))
     fi.plot_save(filename)
+
+  # Add data from a matching lc object
+
+  def add_data(self,lc):
+    if lc.__class__!=self.__class__:
+      raise TypeError('Cannot concatenate '+str(lc.__class__)+' and '+str(self.__class__)+'!')
+    dictkeys1=self.__dict__
+    dictkeys2=lc.__dict__
+    keyset=(set(dictkeys1)|set(dictkeys2))-set(('x','y','ye','bx','b','be','meta'))
+    for key in keyset:
+      if key not in self.__dict__:
+        self.__dict__[key]=lc.__dict__[key]
+      elif key not in lc.__dict__:
+        pass
+      elif self.__dict__[key]!=lc.__dict__[key]:
+        wr.warn('Warning: '+key.upper()+' does not match!')
+    if ('b' in self.__dict__) and ('b' in lc.__dict__):
+      both_bg=True
+    else:
+      both_bg=False
+    print(both_bg)
+    if lc.get_start_time()>self.get_end_time():
+      self.x=np.append(self.x,lc.x)
+      self.y=np.append(self.y,lc.y)
+      self.ye=np.append(self.ye,lc.ye)
+      if both_bg:
+        self.bx=np.append(self.bx,lc.bx)
+        self.b=np.append(self.b,lc.b)
+        self.be=np.append(self.be,lc.be)
+    elif lc.get_end_time()<self.get_start_time():
+      self.x=np.append(lc.x,self.x)
+      self.y=np.append(lc.y,self.y)
+      self.ye=np.append(lc.ye,self.ye)
+      if both_bg:
+        self.bx=np.append(lc.bx,self.bx)
+        self.b=np.append(lc.b,self.b)
+        self.be=np.append(lc.be,self.be)
+    else:
+      raise dat.DataError('Datasets overlap in time!  Cannot concatenate!')
 
   #### These functions have an in-place version, and a -ed version which returns a new object ####
 
@@ -483,6 +535,9 @@ class lightcurve(object):
   def get_median(self):
     return np.median(self.y)
 
+  def get_range(self):
+    return self.get_max()-self.get_min()
+
 class tess_lightcurve(lightcurve):
   def unpack_metadata(self):
     self.objname=self.meta['name']
@@ -513,6 +568,12 @@ class rxte_lightcurve(lightcurve):
     self.max_channel=self.meta['max_channel']
     self.t_units='s'
     self.y_units='cts/s/PCU'
+
+  def shift_gtis(self,shift):
+    new_gtis=[]
+    for gti in self.gtis:
+      new_gtis.append((gti[0]+shift,gti[1]+shift))
+    self.gtis=new_gtis
 
 # ======= define some fetchers for making instrument-specific lightcurves =======================================================================
 
