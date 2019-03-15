@@ -19,6 +19,7 @@ class lightcurve(object):
 
   # Basic initialisation of all lightcurves.  Gets x,y,ye and meta, and attempts to work out units
 
+  @fi.mjit()
   def __init__(self,x,y,ye,meta={}):
     tx=np.array(x).astype(float)
     ty=np.array(y).astype(float)
@@ -83,6 +84,8 @@ class lightcurve(object):
     return self.x[0]
   def get_end_time(self):
     return self.x[-1]
+  def get_title(self):
+    return self.objname
 
   def set_acceptable_gap(self,gap):
     self.acceptable_gap=gap
@@ -128,7 +131,7 @@ class lightcurve(object):
       y=self.y
       ye=self.ye
     ax=fi.filter_axes(output)
-    ax.set_title(self.objname+' Quick Plot')
+    ax.set_title(self.get_title()+' Quick Plot')
     if errors:
       ax.errorbar(x,y,yerr=ye)
     else:
@@ -141,7 +144,7 @@ class lightcurve(object):
     if 'b' not in self.__dict__:
        raise NotImplementedError('No background data available in '+str(self.__class__)+' object')
     ax=fi.filter_axes(output)
-    ax.set_title(self.objname+' bg Quick Plot')
+    ax.set_title(self.get_title()+' bg Quick Plot')
     ax.errorbar(self.bx,self.b,yerr=self.be,label='bg')
     ax.errorbar(self.x,self.y,yerr=self.ye,label='phot')
     ax.legend()
@@ -155,7 +158,7 @@ class lightcurve(object):
     else:
       ax=fi.filter_axes(output)
       p=(self.x%period)/period
-      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=0.01,color='k')
+      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/len(self.y),0.2),color='k')
       fi.plot_save(output)
 
   # return approx location of significant data gaps (>25* median time separation by default)
@@ -177,12 +180,14 @@ class lightcurve(object):
   def get_rms(self):
     return rms(self.y)
 
-  def rms_over_time(self,window):
+  def prep_variability_stats(self,window):
     n_windows=int(self.get_xrange()/window)
     start=self.get_start_time()
     rx=np.zeros(n_windows)
     ry=np.zeros(n_windows)
     rr=np.zeros(n_windows)-1
+    rp=np.zeros(n_windows)
+    rd=np.zeros(n_windows)
     data_gaps=self.get_data_gaps()
     for i in range(n_windows):
       w_start=start+i*window
@@ -193,39 +198,106 @@ class lightcurve(object):
       rx[i]=section.get_start_time()
       ry[i]=section.get_mean()
       rr[i]=section.get_rms()  # NOTE, the RMS values are in RR, NOT RY!!  RY is for meaned stuff!
+      rp[i]=section.get_max()-section.get_mean()
+      rd[i]=section.get_min()-section.get_mean()
     mask=rr>=0  # RMS must be positive!  Also filters out all the skipped points cause of that cheeky -1 on the rr assignment line
     self.rms_over_time_x=rx[mask]
     self.rms_over_time_y=np.abs(ry)[mask]
     self.rms_over_time_r=rr[mask]
+    self.rms_over_time_peak_heights=rp[mask]
+    self.rms_over_time_dip_depths=rd[mask]
 
-  def plot_rms_over_time(self,fractional=False,output=None):
+  def plot_rms(self,fractional=False,output=None,x_unit='time'):
     if 'rms_over_time_x' not in self.__dict__:
-      wr.warn('RMS over time plot not prepared!  Skipping plot!  Prepare with rms_over_time')
+      raise dat.DataError('RMS plots prepared!  Prepare with prep_variability_stats')
+    if x_unit.lower() not in ('time','rate'):
+      raise dat.DataError('I dont recognise the X-unit "'+str(x_unit)+'"!  Valid X-units are "time" or "rate"')
     ax=fi.filter_axes(output)
-    ax.set_title(self.objname+' RMS over Time Plot')
+    ax.set_title(self.get_title()+' RMS over '+x_unit.title()+' Plot')
     if fractional:
       y=self.rms_over_time_r/self.rms_over_time_y
       ax.set_ylabel('Fractional RMS')
     else:
       y=self.rms_over_time_r
       ax.set_ylabel('RMS')
-    ax.set_xlabel('Time '+self.t_unit_string)
-    ax.plot(self.rms_over_time_x,y)
+    if x_unit.lower()=='time':
+      ax.set_xlabel('Time '+self.t_unit_string)
+      ax.plot(self.rms_over_time_x,y)
+    else:
+      ax.set_xlabel('Rate '+self.y_unit_string)
+      ax.scatter(self.rms_over_time_y,y)
     fi.plot_save(output)
 
-  def plot_rms_over_rate(self,fractional=False,output=None):
+  def plot_peak_heights(self,fractional=False,output=None,x_unit='time'):
     if 'rms_over_time_x' not in self.__dict__:
-      wr.warn('RMS over time plot not prepared!  Skipping plot!  Prepare with rms_over_time')
+      raise dat.DataError('Peak heights plot not prepared!  Prepare with prep_variability_stats')
+    if x_unit.lower() not in ('time','rate'):
+      raise dat.DataError('I dont recognise the X-unit "'+str(x_unit)+'"!  Valid X-units are "time" or "rate"')
     ax=fi.filter_axes(output)
-    ax.set_title(self.objname+' RMS over Time Plot')
+    ax.set_title(self.get_title()+' Peak Heights over '+x_unit.title()+' Plot')
     if fractional:
-      y=self.rms_over_time_r/self.rms_over_time_y
-      ax.set_ylabel('Fractional RMS')
+      y=self.rms_over_time_peak_heights/self.rms_over_time_y
+      ax.set_ylabel('Fractional Max Peak Height')
     else:
-      y=self.rms_over_time_r
-      ax.set_ylabel('RMS')
-    ax.set_xlabel('Rate '+self.y_unit_string)
-    ax.scatter(self.rms_over_time_y,y)
+      y=self.rms_over_time_peak_heights
+      ax.set_ylabel('Max Peak Height')
+    if x_unit.lower()=='time':
+      ax.set_xlabel('Time '+self.t_unit_string)
+      ax.plot(self.rms_over_time_x,y)
+    else:
+      ax.set_xlabel('Rate '+self.y_unit_string)
+      ax.scatter(self.rms_over_time_y,y)
+    fi.plot_save(output)
+
+  def plot_dip_depths(self,fractional=False,output=None,x_unit='time'):
+    if 'rms_over_time_x' not in self.__dict__:
+      raise dat.DataError('Dip depths plot not prepared!  Prepare with prep_variability_stats')
+    if x_unit.lower() not in ('time','rate'):
+      raise dat.DataError('I dont recognise the X-unit "'+str(x_unit)+'"!  Valid X-units are "time" or "rate"')
+    ax=fi.filter_axes(output)
+    ax.set_title(self.get_title()+' Dip Depths over '+x_unit.title()+' Plot')
+    if fractional:
+      y=self.rms_over_time_dip_depths/self.rms_over_time_y
+      ax.set_ylabel('Fractional Max Dip Depth')
+    else:
+      y=self.rms_over_time_dip_depths
+      ax.set_ylabel('Max Dip Depth')
+    if x_unit.lower()=='time':
+      ax.set_xlabel('Time '+self.t_unit_string)
+      ax.plot(self.rms_over_time_x,y)
+    else:
+      ax.set_xlabel('Rate '+self.y_unit_string)
+      ax.scatter(self.rms_over_time_y,y)
+    fi.plot_save(output)
+
+  def plot_peaks_and_dips(self,fractional=False,output=None,x_unit='time'):
+    if 'rms_over_time_x' not in self.__dict__:
+      raise dat.DataError('Dip depths plot not prepared!  Prepare with prep_variability_stats')
+    if x_unit.lower() not in ('time','rate'):
+      raise dat.DataError('I dont recognise the X-unit "'+str(x_unit)+'"!  Valid X-units are "time" or "rate"')
+    ax=fi.filter_axes(output)
+    ax.set_title(self.get_title()+' Peak Heights & Dip Depths over '+x_unit.title()+' Plot')
+    if fractional:
+      y1=self.rms_over_time_peak_heights/self.rms_over_time_y
+      y2=self.rms_over_time_dip_depths/self.rms_over_time_y
+      ax.set_ylabel('Fractional Height/Depth')
+    else:
+      y1=self.rms_over_time_peak_heights
+      y2=self.rms_over_time_dip_depths
+      ax.set_ylabel('Max Height/Depth')
+    if x_unit.lower()=='time':
+      ax.set_xlabel('Time '+self.t_unit_string)
+      ax.plot(self.rms_over_time_x,y1,label='Peak Heights')
+      ax.plot(self.rms_over_time_x,y2,label='Dip Depths')
+      ax.fill_between(self.rms_over_time_x,y1,y2,color='0.7')
+      ax.axhline(0,color='k')
+      ax.legend()
+    else:
+      ax.set_xlabel('Rate '+self.y_unit_string)
+      ax.scatter(self.rms_over_time_y,y1,label='Peak Heights')
+      ax.scatter(self.rms_over_time_y,y2,label='Dip Depths')
+      ax.axhline(0,color='k')
+      ax.legend()
     fi.plot_save(output)
     
   # Some general Fourier methods
@@ -261,7 +333,7 @@ class lightcurve(object):
   def plot_fourier(self,output=None):
     if 'ft' not in self.__dict__: self.fourier('leahy')
     ax=fi.filter_axes(output)
-    ax.set_title(self.objname+' Fourier Spectrum')
+    ax.set_title(self.get_title()+' Fourier Spectrum')
     ax.plot(self.ft_freqs,self.ft)
     ax.set_ylabel('"'+self.ft_norm+'"-normalised power')
     ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
@@ -282,7 +354,7 @@ class lightcurve(object):
   def plot_lomb_scargle(self,log=False,output=None):
     if 'ls' not in self.__dict__: self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
     ax=fi.filter_axes(output)
-    ax.set_title(self.objname+' Lomb-Scargle Periodogram')
+    ax.set_title(self.get_title()+' Lomb-Scargle Periodogram')
     if log:
       ax.semilogy(self.ls_freqs,self.ls)
     else:
@@ -348,7 +420,7 @@ class lightcurve(object):
 
     fig=pl.figure(figsize=(20,20))
     ax_main=fig.add_subplot(grid[:size_ratio,:size_ratio])
-    ax_main.set_title(self.objname+' Dynamic Lomb-Scargle Periodogram')
+    ax_main.set_title(self.get_title()+' Dynamic Lomb-Scargle Periodogram')
     if not with_lc:
       ax_main.set_xlabel('Time ('+self.t_units+')')
     ax_main.set_ylabel('Frequency ('+self.t_units+'^-1)')
@@ -386,7 +458,7 @@ class lightcurve(object):
       raise TypeError('Cannot concatenate '+str(lc.__class__)+' and '+str(self.__class__)+'!')
     dictkeys1=self.__dict__
     dictkeys2=lc.__dict__
-    keyset=(set(dictkeys1)|set(dictkeys2))-set(('x','y','ye','bx','b','be','meta'))
+    keyset=(set(dictkeys1)|set(dictkeys2))-set(('x','y','ye','bx','b','be','meta','sector')) #some protected dict items which are allowed to mismatch
     for key in keyset:
       if key not in self.__dict__:
         self.__dict__[key]=lc.__dict__[key]
@@ -416,6 +488,14 @@ class lightcurve(object):
         self.be=np.append(lc.be,self.be)
     else:
       raise dat.DataError('Datasets overlap in time!  Cannot concatenate!')
+    if 'sector' in self.__dict__:
+      self.sector=''  # nuke sector info if several sectors have been cated
+      self.meta['sector']=''
+
+  def added_data(self,lc):
+    lc0=self.copy()
+    lc0.add_data(lc)
+    return lc0
 
   #### These functions have an in-place version, and a -ed version which returns a new object ####
 
@@ -431,14 +511,9 @@ class lightcurve(object):
     self.ye=self.ye[mask]
 
   def calved(self,stime,etime):
-    with wr.catch_warnings():
-      wr.filterwarnings('ignore',message='invalid value encountered in less')
-      wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
-      mask=np.logical_and(self.x>=stime,self.x<etime)
-    newx=self.x[mask]
-    newy=self.y[mask]
-    newye=self.ye[mask]
-    return self.__class__(newx,newy,newye,self.meta)
+    calved_lc=self.copy()
+    calved_lc.calve(stime,etime)
+    return calved_lc
 
   # Attempts to detrend the data for a given window size.
 
@@ -447,8 +522,9 @@ class lightcurve(object):
     self.y=newy
 
   def detrended(self,window_size,method='savgol'):
-    newy=self.y-smart_smooth(self,window_size,method)
-    return self.__class__(self.x,newy,self.y,self.meta)
+    detrended_lc=self.copy()
+    detrended_lc.detrend(window_size,method)
+    return detrended_lc
 
   # smooths the data for a given window size.  Sorta the opposite of above.
 
@@ -457,8 +533,9 @@ class lightcurve(object):
     self.y=newy
 
   def smoothed(self,window_size,method='savgol'):
-    newy=smart_smooth(self,window_size,method)
-    return self.__class__(self.x,newy,self.y,self.meta)
+    smoothed_lc=self.copy()
+    smoothed_lc.smooth(window_size,method)
+    return smoothed_lc
 
   # Shuffler; returns the y,ye pairs in a random order
 
@@ -469,11 +546,9 @@ class lightcurve(object):
     self.ye=self.ye[indices]
 
   def shuffled(self):
-    indices=np.arange(len(self.x),dtype=int)
-    rn.shuffle(indices)
-    newy=self.y[indices]
-    newye=self.ye[indices]
-    return self.__class__(self.x,newy,newye,self.meta)
+    shuffled_lc=self.copy()
+    shuffled_lc.shuffle()
+    return shuffled_lc
 
   # Phase-folder!  Does a bog-standard fixed period phase-folding
 
@@ -489,15 +564,9 @@ class lightcurve(object):
     self.folded=True
 
   def phase_folded(self,period,phase_bins=100):
-    folder=phase_folder(self,period,phase_bins)
-    newx=folder.get_x()
-    newy=folder.get_y()
-    newye=folder.get_ye()
-    newmeta=self.meta
-    newmeta['folded_period']=period
-    newobj=self.__class__(newx,newy,newye,newmeta)
-    newobj.folded=True
-    return newobj
+    folded_lc=self.copy()
+    folded_lc.phase_fold(period,phase_bins)
+    return folded_lc
 
   # Some super basic arithmetic functions for manipulating lightcurves, i.e. "add a constant", "divide by a constant"
 
@@ -506,16 +575,17 @@ class lightcurve(object):
     self.ye=self.ye*constant
 
   def multiplied_by_constant(self,constant):
-    newy=self.y*constant
-    newye=self.ye*constant
-    return self.__class__(self.x,newy,newye,self.meta)
+    multiplied_lc=self.copy()
+    multiplied_lc.multiply_by_constant(constant)
+    return multiplied_lc
 
   def add_constant(self,constant):
     self.y=self.y+constant
 
   def added_constant(self,constant):
-    newy=self.y+constant
-    return self.__class__(self.x,newy,self.ye,self.meta)
+    added_lc=self.copy()
+    added_lc.added_constant(constant)
+    return added_lc
 
   # Some basic statistical properties
 
@@ -540,6 +610,7 @@ class lightcurve(object):
 class tess_lightcurve(lightcurve):
   def unpack_metadata(self):
     self.objname=self.meta['name']
+    self.sector=self.meta['sector']
     self.mission=self.meta['mission']
     self.binsize=self.meta['binsize']
     self.acceptable_gap=25 # allow a waaaay bigger data gap before a data gap is declared
@@ -556,6 +627,11 @@ class tess_lightcurve(lightcurve):
     self.be=np.array(self.meta['be'])[bgmask].astype(float)
     self.t_units='BJD'
     self.y_units='e/s'
+
+  def get_title(self): # so that the sector is loaded onto plot titles by default
+    if self.sector=='':
+      return self.objname
+    return self.objname+' (Sector '+self.sector+')'
 
 class rxte_lightcurve(lightcurve):
   def unpack_metadata(self):
@@ -604,11 +680,12 @@ def get_tess_lc(filename):
   except:
     imeta['tess_id']='UNKNOWN'
   try:
-    sname=' (Sector '+str(f[0].header['SECTOR'])+')'
+    sname=str(f[0].header['SECTOR'])
   except:
     sname=''
-    wr.warn('Could not find Object Name')
-  imeta['name']=oname+sname
+    wr.warn('Could not find Object Sector')
+  imeta['name']=oname
+  imeta['sector']=sname
   imeta['mission']='TESS'
   lcdat=f[1].data
   q=lcdat['QUALITY']
@@ -798,3 +875,8 @@ class phase_folder(object):
 
 def rms(x):
   return (np.mean((x-np.mean(x))**2))**0.5
+
+# ===== a non-OO adding method for lcs =====
+
+def add_lcs(lc1,lc2):
+  return lc1.added_data(lc2)

@@ -1,7 +1,22 @@
-#Routines for file management and plot management
+#Routines for file management, plot management and some technical backends
 
 from matplotlib import pyplot as pl
 from matplotlib import axes as xs
+
+# a conditional jit compiler to avoid having numba be mandatory
+
+try:
+  import numba as nb
+  withjit=True
+except ModuleNotFoundError:
+  withjit=False
+
+class mjit(object):
+  def __call__(self, f):
+    if not withjit:
+      return f
+    else:
+      return nb.jit(f)
 
 def plot_save(output):
   if output==None:
