@@ -18,9 +18,16 @@ class mjit(object):
     else:
       return nb.jit(f)
 
-def plot_save(output):
+def is_iterable(obj):
+  try:
+    iter(obj)
+    return True
+  except:
+    return False
+
+def plot_save(output,block=False):
   if output==None:
-    pl.show(block=False)
+    pl.show(block=block)
   elif isinstance(output,xs._subplots.Axes):
     pass
   else:

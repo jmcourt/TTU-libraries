@@ -13,3 +13,22 @@ Contains the code for 'lightcurve' classes, to streamline analysing lightcurve d
 ===== pan_lib =====
 
 The PANTHEON library from my time in Southampton, updated to the Python 3 era.  Mostly deprecated, but every now and again I fancy using something that I remember exists in here, so good to keep around.  Contains a LOT of stuff, but its quite extensively documented.
+
+
+REQUIREMENTS:
+
+These libraries require Python 3.X to run, as well as the following Python modules:
+
+* astropy
+* copy
+* matplotlib
+* numpy
+* random
+* scipy
+* warnings
+
+As well as the following optional modules:
+
+* astroquery (to automatically identify Simbad names of TESS targets)
+* loess (for performing loess smoothing on lightcurves)
+* numba (for some speedups in lightcurve object generation)

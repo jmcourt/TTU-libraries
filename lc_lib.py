@@ -1,6 +1,5 @@
 import astropy.coordinates as coord
 from   astropy.io import fits
-from   astroquery.simbad import Simbad
 import copy
 import data_lib as dat
 import file_lib as fi
@@ -10,8 +9,24 @@ from   matplotlib import pyplot as pl
 import numpy as np
 import random as rn
 from   scipy import fftpack as fou
+from   scipy import interpolate as intp
+from   scipy import optimize as optm
 from   scipy import signal as sgnl
 import warnings as wr
+
+# Optional packages
+
+try:
+  from astroquery.simbad import Simbad
+  imported_astroquery=True
+except:
+  imported_astroquery=False
+
+try:
+  from loess import loess_1d as loe
+  imported_loess=True
+except:
+  imported_loess=False
 
 # ========= BASE LIGHTCURVE OBJECT! =====================================================================================================================
 
@@ -32,17 +47,19 @@ class lightcurve(object):
       meta['acceptable_gap']=1.5
     self.acceptable_gap=meta['acceptable_gap'] # anything more than 1.5 times the median time separation is considered a data gap
     self.meta=meta
-    self.t_units=''
-    self.y_units=''
+    if 't_units' not in self.__dict__:
+      self.t_units=''
+    if 'y_units' not in self.__dict__:
+      self.y_units=''
     if self.is_empty():
       self.binsize=0
     else:
       self.binsize=min(self.delta_T())
     self.ft_norm='N/A'
     self.unpack_metadata()
-    self.folded=False
-    self.t_unit_string = '' if self.t_units=='' else '('+self.t_units+')'
-    self.y_unit_string = '' if self.y_units=='' else '('+self.y_units+')'
+    self.is_folded=False
+    self.x_axis_is_phase=False
+    self.period=0
 
   # Generic metadata unpacking.  Use this in inherting classes to do fancy stuff with extra data
 
@@ -64,7 +81,7 @@ class lightcurve(object):
   # Simple data checks
 
   def is_empty(self):
-    return len(self.x)==0
+    return self.get_len()==0
 
   # Basic getters & setters
 
@@ -86,9 +103,17 @@ class lightcurve(object):
     return self.x[-1]
   def get_title(self):
     return self.objname
+  def get_len(self):
+    return len(self.x)
 
   def set_acceptable_gap(self,gap):
     self.acceptable_gap=gap
+
+  # Get me a spline!
+
+  def get_spline(self,kind='slinear'):
+    spline=intp.interp1d(self.x,self.y,kind=kind,fill_value='extrapolate')
+    return spline
 
   # Dump contents to a csv
 
@@ -101,28 +126,43 @@ class lightcurve(object):
       if type(self.meta[key]) in (str,int,float):
         f.write(key+':'+str(self.meta[key])+'\n')
     f.write('SCIENCE_DATA\n')
-    for i in range(len(self.x)):
+    for i in range(self.get_len()):
       f.write(str(self.x[i])+','+str(self.y[i])+','+str(self.ye[i])+'\n')
     f.close()
 
-  # Self-explanatory quick-and-dirty plot machine.  BG plot checks if bg data is available, and dies if not
+  # Play with time axis
 
   def zero_time(self):
-    if len(self.x)>0:
+    if not self.is_empty():
       start_time=self.get_start_time()
-      self.x=self.x-start_time
       # Should be able to zero a lightcurve of length 0.  This matters for dynamic spectra
     else:
       start_time=0
-    self.shift_gtis(-start_time)
+    self.add_time(-start_time)
+
+  def zeroed_time(self):
+    zeroed_lc=self.copy()
+    zeroed_lc.zero_time()
+    return zeroed_lc
+
+  def add_time(self,time):
+    self.x=self.x+time
+    self.shift_gtis(time)
     if 'b' in self.__dict__:
-      self.bx=self.bx-start_time
+      self.bx=self.bx+time
+
+  def added_time(self,time):
+    added_lc=self.copy()
+    added_lc.add_time(time)
+    return added_lc
 
   def shift_gtis(self,shift):
     pass    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
 
-  def quickplot(self,output=None,errors=True):
-    if self.folded:
+  # Self-explanatory quick-and-dirty plot machine.  BG plot checks if bg data is available, and dies if not
+
+  def quickplot(self,output=None,errors=True,block=False,**kwargs):
+    if self.is_folded:
       x=np.append(self.x,self.x+1)
       y=np.append(self.y,self.y)
       ye=np.append(self.ye,self.ye)
@@ -133,33 +173,35 @@ class lightcurve(object):
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Quick Plot')
     if errors:
-      ax.errorbar(x,y,yerr=ye)
+      ax.errorbar(x,y,yerr=ye,**kwargs)
     else:
-      ax.plot(x,y)
-    ax.set_xlabel('Time '+self.t_unit_string)
-    ax.set_ylabel('Rate '+self.y_unit_string)
-    fi.plot_save(output)
+      ax.plot(x,y,**kwargs,**kwargs)
+    ax.set_xlabel('Time '+self.t_unit_string())
+    ax.set_ylabel('Rate '+self.y_unit_string())
+    fi.plot_save(output,block)
 
-  def plot_bg(self,output=None):
+  def plot_bg(self,output=None,block=False,**kwargs):
     if 'b' not in self.__dict__:
        raise NotImplementedError('No background data available in '+str(self.__class__)+' object')
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' bg Quick Plot')
-    ax.errorbar(self.bx,self.b,yerr=self.be,label='bg')
-    ax.errorbar(self.x,self.y,yerr=self.ye,label='phot')
+    ax.errorbar(self.bx,self.b,yerr=self.be,label='bg',**kwargs)
+    ax.errorbar(self.x,self.y,yerr=self.ye,label='phot',**kwargs)
     ax.legend()
-    fi.plot_save(output)
+    fi.plot_save(output,block)
 
   # Creates a scatter plot of an unfolded lightcurve where the x-coord of each point is its phase
 
-  def plot_folded_scatterplot(self,period,output=None):
-    if self.folded:
+  def plot_folded_scatterplot(self,period,output=None,block=False,**kwargs):
+    if self.is_folded:
       wr.warning("Can't fold that which is already folded!")
     else:
       ax=fi.filter_axes(output)
       p=(self.x%period)/period
-      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/len(self.y),0.2),color='k')
-      fi.plot_save(output)
+      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/self.get_len(),0.2),color='k',**kwargs)
+      ax.set_xlabel('Phase')
+      ax.set_ylabel('Rate '+self.y_unit_string())
+      fi.plot_save(output,block)
 
   # return approx location of significant data gaps (>25* median time separation by default)
 
@@ -207,7 +249,7 @@ class lightcurve(object):
     self.rms_over_time_peak_heights=rp[mask]
     self.rms_over_time_dip_depths=rd[mask]
 
-  def plot_rms(self,fractional=False,output=None,x_unit='time'):
+  def plot_rms(self,fractional=False,output=None,x_unit='time',block=False,**kwargs):
     if 'rms_over_time_x' not in self.__dict__:
       raise dat.DataError('RMS plots prepared!  Prepare with prep_variability_stats')
     if x_unit.lower() not in ('time','rate'):
@@ -221,14 +263,14 @@ class lightcurve(object):
       y=self.rms_over_time_r
       ax.set_ylabel('RMS')
     if x_unit.lower()=='time':
-      ax.set_xlabel('Time '+self.t_unit_string)
-      ax.plot(self.rms_over_time_x,y)
+      ax.set_xlabel('Time '+self.t_unit_string())
+      ax.plot(self.rms_over_time_x,y,**kwargs)
     else:
-      ax.set_xlabel('Rate '+self.y_unit_string)
-      ax.scatter(self.rms_over_time_y,y)
-    fi.plot_save(output)
+      ax.set_xlabel('Rate '+self.y_unit_string())
+      ax.scatter(self.rms_over_time_y,y,**kwargs)
+    fi.plot_save(output,block)
 
-  def plot_peak_heights(self,fractional=False,output=None,x_unit='time'):
+  def plot_peak_heights(self,fractional=False,output=None,x_unit='time',block=False,**kwargs):
     if 'rms_over_time_x' not in self.__dict__:
       raise dat.DataError('Peak heights plot not prepared!  Prepare with prep_variability_stats')
     if x_unit.lower() not in ('time','rate'):
@@ -242,14 +284,14 @@ class lightcurve(object):
       y=self.rms_over_time_peak_heights
       ax.set_ylabel('Max Peak Height')
     if x_unit.lower()=='time':
-      ax.set_xlabel('Time '+self.t_unit_string)
-      ax.plot(self.rms_over_time_x,y)
+      ax.set_xlabel('Time '+self.t_unit_string())
+      ax.plot(self.rms_over_time_x,y,**kwargs)
     else:
-      ax.set_xlabel('Rate '+self.y_unit_string)
-      ax.scatter(self.rms_over_time_y,y)
-    fi.plot_save(output)
+      ax.set_xlabel('Rate '+self.y_unit_string())
+      ax.scatter(self.rms_over_time_y,y,**kwargs)
+    fi.plot_save(output,block)
 
-  def plot_dip_depths(self,fractional=False,output=None,x_unit='time'):
+  def plot_dip_depths(self,fractional=False,output=None,x_unit='time',block=False,**kwargs):
     if 'rms_over_time_x' not in self.__dict__:
       raise dat.DataError('Dip depths plot not prepared!  Prepare with prep_variability_stats')
     if x_unit.lower() not in ('time','rate'):
@@ -263,14 +305,14 @@ class lightcurve(object):
       y=self.rms_over_time_dip_depths
       ax.set_ylabel('Max Dip Depth')
     if x_unit.lower()=='time':
-      ax.set_xlabel('Time '+self.t_unit_string)
-      ax.plot(self.rms_over_time_x,y)
+      ax.set_xlabel('Time '+self.t_unit_string())
+      ax.plot(self.rms_over_time_x,y,**kwargs)
     else:
-      ax.set_xlabel('Rate '+self.y_unit_string)
-      ax.scatter(self.rms_over_time_y,y)
-    fi.plot_save(output)
+      ax.set_xlabel('Rate '+self.y_unit_string())
+      ax.scatter(self.rms_over_time_y,y,**kwargs)
+    fi.plot_save(output,block)
 
-  def plot_peaks_and_dips(self,fractional=False,output=None,x_unit='time'):
+  def plot_peaks_and_dips(self,fractional=False,output=None,x_unit='time',block=False,**kwargs):
     if 'rms_over_time_x' not in self.__dict__:
       raise dat.DataError('Dip depths plot not prepared!  Prepare with prep_variability_stats')
     if x_unit.lower() not in ('time','rate'):
@@ -286,25 +328,27 @@ class lightcurve(object):
       y2=self.rms_over_time_dip_depths
       ax.set_ylabel('Max Height/Depth')
     if x_unit.lower()=='time':
-      ax.set_xlabel('Time '+self.t_unit_string)
-      ax.plot(self.rms_over_time_x,y1,label='Peak Heights')
-      ax.plot(self.rms_over_time_x,y2,label='Dip Depths')
+      ax.set_xlabel('Time '+self.t_unit_string())
+      ax.plot(self.rms_over_time_x,y1,label='Peak Heights',**kwargs)
+      ax.plot(self.rms_over_time_x,y2,label='Dip Depths',**kwargs)
       ax.fill_between(self.rms_over_time_x,y1,y2,color='0.7')
       ax.axhline(0,color='k')
       ax.legend()
     else:
-      ax.set_xlabel('Rate '+self.y_unit_string)
-      ax.scatter(self.rms_over_time_y,y1,label='Peak Heights')
-      ax.scatter(self.rms_over_time_y,y2,label='Dip Depths')
+      ax.set_xlabel('Rate '+self.y_unit_string())
+      ax.scatter(self.rms_over_time_y,y1,label='Peak Heights',**kwargs)
+      ax.scatter(self.rms_over_time_y,y2,label='Dip Depths',**kwargs)
       ax.axhline(0,color='k')
       ax.legend()
-    fi.plot_save(output)
+    fi.plot_save(output,block)
     
   # Some general Fourier methods
 
+  def get_nyquist(self):
+    return 0.5/self.binsize
+
   def fourier(self,norm,normname='custom'):
     wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
-    nyquist=0.5/self.binsize
     try:
       norm=float(norm)
       custnorm=True
@@ -312,7 +356,7 @@ class lightcurve(object):
       norm=norm.lower()
       custnorm=False
     raw_ft=fou.fft(self.y)
-    ft=np.abs(raw_ft[1:len(self.y)//2])**2  # crop all data above nyquist and obtain the amplitudes of the FT
+    ft=np.abs(raw_ft[1:self.get_len()//2])**2  # crop all data above nyquist and obtain the amplitudes of the FT
     if custnorm:
       self.ft_norm=normname
       self.ft=ft*norm
@@ -328,16 +372,16 @@ class lightcurve(object):
         wr.warn('Invalid Fourier normalisation '+norm+' specified: using None normalisation')
       self.ft_norm='none'
       self.ft=ft
-    self.ft_freqs=np.linspace(0,nyquist,len(ft)+1)[1:]
+    self.ft_freqs=np.linspace(0,self.get_nyquist,len(ft)+1)[1:]
       
-  def plot_fourier(self,output=None):
+  def plot_fourier(self,output=None,**kwargs):
     if 'ft' not in self.__dict__: self.fourier('leahy')
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Fourier Spectrum')
-    ax.plot(self.ft_freqs,self.ft)
+    ax.plot(self.ft_freqs,self.ft,**kwargs)
     ax.set_ylabel('"'+self.ft_norm+'"-normalised power')
     ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
-    fi.plot_save(output)
+    fi.plot_save(output,**kwargs)
 
   def fourier_spectrogram(self,binsize,bin_separation):
     raise NotImplementedError('Fourier Spectrogram method not coded yet!')
@@ -351,17 +395,40 @@ class lightcurve(object):
     self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm)
     self.ls_freqs=np.array(freqrange)
 
-  def plot_lomb_scargle(self,log=False,output=None):
+  def plot_lomb_scargle(self,log=False,output=None,block=False,**kwargs):
     if 'ls' not in self.__dict__: self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Lomb-Scargle Periodogram')
     if log:
-      ax.semilogy(self.ls_freqs,self.ls)
+      ax.semilogy(self.ls_freqs,self.ls,**kwargs)
     else:
-      ax.plot(self.ls_freqs,self.ls)
+      ax.plot(self.ls_freqs,self.ls,**kwargs)
     ax.set_ylabel('Lomb-Scargle power')
     ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
-    fi.plot_save(output)
+    fi.plot_save(output,block)
+
+  def get_freq_resolution(self): # get the minimum frequency resolution for LS or Fourier without oversampling
+    minf=1/self.get_xrange()
+    maxf=self.get_nyquist()
+    ndat=self.get_len()
+    return (maxf-minf)/ndat
+
+  def fit_qpo(self,f_min,f_max,plot=False,**kwargs):
+    frange=f_max-f_min
+    newlc=self.copy()
+    #newlc.lomb_scargle(np.arange(f_min,f_max,frange/1000))
+    newlc.lomb_scargle(np.arange(f_min,f_max,self.get_freq_resolution()))
+    newlc.plot_lomb_scargle()
+    init_vals=(np.max(newlc.ls_freqs),f_min+frange/2,frange/2,0)
+    fit_results=optm.curve_fit(frq.lorentzian,newlc.ls_freqs,newlc.ls,init_vals)
+    if plot:
+      pl.figure()
+      ax=pl.gca()
+      newlc.plot_lomb_scargle(output=ax)
+      plotrange=np.arange(newlc.ls_freqs[0],newlc.ls_freqs[-1],(newlc.ls_freqs[-1]-newlc.ls_freqs[0])/100)
+      ax.plot(plotrange,frq.lorentzian(plotrange,*fit_results[0]),':k',**kwargs)
+      pl.show()
+    return fit_results
 
   def lomb_scargle_spectrogram(self,freqrange,binsize,bin_separation):
     min_points=80
@@ -370,7 +437,7 @@ class lightcurve(object):
     numbins=max(int(((self.get_xrange())-binsize)//bin_separation),0)
     if numbins==0:
       raise ValueError('Bin width longer than data set!')
-    lsnorm=(len(self.y)-1)/(2.0*numbins)
+    lsnorm=(self.get_len()-1)/(2.0*numbins)
     dynamic_spectrum=np.zeros((numbins,len(freqrange)))
     data_gaps=self.get_data_gaps()
     for i in range(numbins):
@@ -404,7 +471,7 @@ class lightcurve(object):
       wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping grabbing!')
     return self.dynamic_ls_data
 
-  def plot_lomb_scargle_spectrogram(self,colour_range='auto',filename=None,with_lc=True,with_1d_ls=True):
+  def plot_lomb_scargle_spectrogram(self,colour_range='auto',filename=None,with_lc=True,with_1d_ls=True,block=False):
 
     if 'dynamic_ls_data' not in self.__dict__:
       wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping plotting!')
@@ -422,7 +489,7 @@ class lightcurve(object):
     ax_main=fig.add_subplot(grid[:size_ratio,:size_ratio])
     ax_main.set_title(self.get_title()+' Dynamic Lomb-Scargle Periodogram')
     if not with_lc:
-      ax_main.set_xlabel('Time ('+self.t_units+')')
+      ax_main.set_xlabel('Time '+self.t_unit_string())
     ax_main.set_ylabel('Frequency ('+self.t_units+'^-1)')
     Z=self.dynamic_ls_data.get_z()
     if colour_range=='auto':
@@ -438,9 +505,9 @@ class lightcurve(object):
       ax_main.set_xticks([])
       ax_lc=fig.add_subplot(grid[size_ratio,:size_ratio])
       self.quickplot(output=ax_lc)
-      ax_lc.set_ylabel('Rate '+self.y_unit_string)
+      ax_lc.set_ylabel('Rate '+self.y_unit_string())
       ax_lc.set_xlim(min(self.dynamic_ls_data.get_x()),max(self.dynamic_ls_data.get_x()))
-      ax_lc.set_xlabel('Time ('+self.t_units+')')
+      ax_lc.set_xlabel('Time '+self.t_unit_string())
     if with_1d_ls:
       ax_ls=fig.add_subplot(grid[:size_ratio,size_ratio])
       ax_ls.semilogx(self.ls,self.ls_freqs,'k')
@@ -449,7 +516,7 @@ class lightcurve(object):
       ax_ls.fill_betweenx(self.ls_freqs,self.ls,0,facecolor='0.7')
       ax_ls.set_xlim(np.percentile(self.ls,25),max(self.ls*1.01))
       ax_ls.set_ylim(min(self.dynamic_ls_data.get_y()),max(self.dynamic_ls_data.get_y()))
-    fi.plot_save(filename)
+    fi.plot_save(filename,block)
 
   # Add data from a matching lc object
 
@@ -497,6 +564,20 @@ class lightcurve(object):
     lc0.add_data(lc)
     return lc0
 
+  # Plot label generation
+
+  def t_unit_string(self):
+    if self.t_units=='':
+      return ''
+    else:
+      return '('+self.t_units+')'
+
+  def y_unit_string(self):
+    if self.y_units=='':
+      return ''
+    else:
+      return '('+self.y_units+')'
+
   #### These functions have an in-place version, and a -ed version which returns a new object ####
 
   # Returns a subset of the lightcurve between t=stime and t=etime.  New lc retains class of parent
@@ -526,6 +607,13 @@ class lightcurve(object):
     detrended_lc.detrend(window_size,method)
     return detrended_lc
 
+  def plot_with_trend(self,window_size,method='savgol',output=None,block=False,**kwargs):
+    ax=fi.filter_axes(output)
+    smoothed_lc=self.smoothed(window_size,method)
+    self.quickplot(output=ax,**kwargs)
+    smoothed_lc.quickplot(output=ax,errors=False,**kwargs)
+    fi.plot_save(output,block)
+
   # smooths the data for a given window size.  Sorta the opposite of above.
 
   def smooth(self,window_size,method='savgol'):
@@ -540,7 +628,7 @@ class lightcurve(object):
   # Shuffler; returns the y,ye pairs in a random order
 
   def shuffle(self):
-    indices=np.arange(len(self.x),dtype=int)
+    indices=np.arange(self.get_len(),dtype=int)
     rn.shuffle(indices)
     self.y=self.y[indices]
     self.ye=self.ye[indices]
@@ -555,18 +643,73 @@ class lightcurve(object):
   def get_phases(self,period):
     return (self.x%period)/period
 
+  def get_Ncycles(self,period):
+    return self.x/period
+
+  def set_x_axis_to_Ncycles(self,period):
+    if self.x_axis_is_phase:
+      wr.warn('X-axis is already in NCycles!')
+    else:
+      self.x=self.get_Ncycles(period)
+      self.x_axis_is_phase=True
+      self.t_units='# Cycles'
+      self.period=period
+
+  def setted_x_axis_to_Ncycles(self,period):  # disregard the awful english, it follows the naming scheme for in-place vs. copy-producing methods...
+    if self.x_axis_is_phase:
+      wr.warn('X-axis is already in NCycles!')
+    else:
+      Ncycles_lc=self.copy()
+      Ncycles_lc.set_x_axis_to_Ncycles(period)
+      return Ncycles_lc
+
   def phase_fold(self,period,phase_bins=100):
     folder=phase_folder(self,period,phase_bins)
     self.x=folder.get_x()
     self.y=folder.get_y()
     self.ye=folder.get_ye()
     self.meta['folded_period']=period
-    self.folded=True
+    self.is_folded=True
+    self.period=period
+    self.x_axis_is_phase=True
 
   def phase_folded(self,period,phase_bins=100):
     folded_lc=self.copy()
     folded_lc.phase_fold(period,phase_bins)
     return folded_lc
+
+  # Gets the period at which the dispersion in a folded lightcurve's phase bins is minimum.  One way of working out a period
+
+  def get_minimum_dispersion_period(self,estimate,phase_bins=100,max_iterations=7,variance=0.1,error=np.inf):
+    x=[];y=[]
+    def min_dispersion_test_function(p):
+      test_lc=self.phase_folded(p,phase_bins=phase_bins)
+      return np.sum(test_lc.get_ye())
+    for i in np.arange(estimate*(1-variance),estimate*(1+variance),estimate*variance/10.):
+      x.append(i)
+      y.append(min_dispersion_test_function(i))
+    x=np.array(x)
+    y=np.array(y)
+    invals=(np.min(y)-np.max(y),estimate,estimate*0.1*variance,np.max(y))
+    try:
+      with wr.catch_warnings():
+        wr.simplefilter("ignore")
+        ests=optm.curve_fit(frq.gaussian,x,y,invals)
+    except RuntimeError:
+      return estimate,error  # return a value if the parameter space becomes non-gaussian
+    check0=np.abs(ests[0][0])>3*np.sqrt(np.abs(np.diag(ests[1])))[0]
+    check1=np.abs(ests[0][1])>3*np.sqrt(np.abs(np.diag(ests[1])))[1]
+    check2=np.abs(ests[0][2])>3*np.sqrt(np.abs(np.diag(ests[1])))[2]
+    check3=np.abs(ests[0][3])>3*np.sqrt(np.abs(np.diag(ests[1])))[3]
+    if not (check0 and check1 and check2 and check3): # also return value if gaussian is fit but poorly constrained
+      return estimate,error
+    estimate=ests[0][1]
+    error=np.sqrt(np.diag(ests[1])[1])
+    if -np.log10(variance)<=max_iterations:
+      estimate,error=self.get_minimum_dispersion_period(estimate,phase_bins=phase_bins,max_iterations=max_iterations,variance=0.1*variance,error=error)
+    return estimate,error
+    
+    
 
   # Some super basic arithmetic functions for manipulating lightcurves, i.e. "add a constant", "divide by a constant"
 
@@ -584,8 +727,49 @@ class lightcurve(object):
 
   def added_constant(self,constant):
     added_lc=self.copy()
-    added_lc.added_constant(constant)
+    added_lc.add_constant(constant)
     return added_lc
+
+  def add_spline(self,spline):
+    self.y=self.y+spline(self.x)
+
+  def added_spline(self,spline):
+    added_lc=self.copy()
+    added_lc.add_spline(spline)
+    return added_lc
+
+  def divide_by_spline(self,spline):
+    self.y=self.y/-spline(self.x)
+    self.ye=self.ye/spline(self.x)
+
+  def divided_by_spline(self,spline):
+    divided_lc=self.copy()
+    divided_lc.divide_by_spline(spline)
+    return divided_lc
+
+  def mask(self,mask):
+    if len(mask)!=self.get_len():
+      raise dat.DataError('Mask of different length to lightcurve!')
+    self.x=self.x[mask]
+    self.y=self.y[mask]
+    self.ye=self.ye[mask]
+
+  def masked(self,mask):
+    masked_lc=self.copy()
+    masked_lc.mask(mask)
+    return masked_lc
+
+  def clip_percentile_range(self,lower,upper):
+    if lower>upper:
+      raise dat.DataError('Upper percentile must >= lower percentile!')
+    u_bound=np.percentile(self.y,upper)
+    l_bound=np.percentile(self.y,lower)
+    self.mask(np.logical_and(self.y>=l_bound,self.y<u_bound))
+
+  def clipped_percentile_range(self,lower,upper):
+    clipped_lc=self.copy()
+    clipped_lc.clip_percentile_range(lower,upper)
+    return clipped_lc
 
   # Some basic statistical properties
 
@@ -618,7 +802,7 @@ class tess_lightcurve(lightcurve):
     with wr.catch_warnings():
       wr.filterwarnings('ignore',message='invalid value encountered in less_equal')
       wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
-      if len(self.x)>0:
+      if not self.is_empty():
          bgmask=np.logical_and(abx>=self.get_start_time(),abx<=self.get_end_time())
       else:
          bgmask=[]   # Should still be able to initialise a TESS lightcurve of length 0.  This matters for dynamical spectra
@@ -661,6 +845,7 @@ def get_tess_lc(filename):
     raise dat.DataError('TESS FITS file does not appear to be a lightcurve')
 
   try:
+    assert imported_astroquery
     radesys=f[0].header['RADESYS'].lower()
     objra=str(f[0].header['RA_OBJ'])+' '
     objdec=str(f[0].header['DEC_OBJ'])
@@ -669,7 +854,7 @@ def get_tess_lc(filename):
       wr.filterwarnings('ignore')
       simbadlist=Simbad.query_region(objcoord, radius='0d1m0s')
     oname=str(simbadlist[0]['MAIN_ID'])[2:-1]
-  except (KeyError,TypeError):
+  except (KeyError,TypeError,AssertionError):
     try:
       oname=f[1].header['OBJECT']
     except KeyError:
@@ -784,6 +969,28 @@ def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=',',meta_sep=':'):
   f.close()
   return lightcurve(x,y,ye,meta=imeta)
 
+##############################################################################
+
+def get_lc_from_arrays(x,y,ye=[]):
+  if len(ye)!=len(x):
+    ye=np.zeros(len(x))
+  return lightcurve(x,y,ye,meta={})
+
+##############################################################################
+
+def get_lc_from_xronos(filename): # convert a xronos output, or similar non-instrumental fits, to a lc object
+  f=fits.open(filename)
+  imeta={}
+  header=f[1].header
+  imeta['t_units']=header['TUNIT1']
+  imeta['y_units']=header['TUNIT3']
+  tstart=header['TSTARTI']+header['TSTARTF']
+  imeta['name']=header['OBJECT']
+  data=f[1].data
+  x=data['TIME']
+  y=data['RATE1']
+  ye=data['ERROR1']
+  return lightcurve(x,y,ye,meta=imeta)
 
 # ======= General purpose lightcurvey gubbins ======
 
@@ -809,16 +1016,22 @@ def is_overlap(user_range,test_ranges):
 
 # ======= Smoothing functions =======
 
-def smart_smooth(lc,window_size,method): # takes a lightcurve-like object
+def smart_smooth(lc,parameter,method): # takes a lightcurve-like object
   method=method.lower()
   if method=='savgol':
-    return smart_savgol(lc,window_size)
+    return smart_savgol(lc,parameter)
   elif method=='time_median':
-    return time_median_smooth(lc,window_size)
+    return time_median_smooth(lc,parameter)
+  elif method=='time_mean':
+    return time_mean_smooth(lc,parameter)
+  elif method=='percentile_clipping_time_mean':
+    return percentile_clipping_time_mean_smooth(lc,parameter)
+  elif method=='loess':
+    return loess_smooth(lc,parameter)
   else:
     raise NotImplementedError('Unknown smoothing method "'+method+'"!')
 
-def smart_savgol(lc,window_size):
+def smart_savgol(lc,window_size): # window size in #POINTS units
   y=lc.get_y()
   ws=int(window_size)
   if ws%2==0:
@@ -827,7 +1040,7 @@ def smart_savgol(lc,window_size):
     wr.filterwarnings('ignore')
     return sgnl.savgol_filter(y,ws,3)
 
-def time_median_smooth(lc,window_size):
+def time_median_smooth(lc,window_size):  # window size in TIME units
   y=lc.get_y()
   x=lc.get_x()
   ws2=window_size/2.0
@@ -836,6 +1049,48 @@ def time_median_smooth(lc,window_size):
   for i in range(length):
     mask=np.logical_and(x>=x[i]-ws2,x<x[i]+ws2)
     newy[i]=np.median(y[mask])
+  return newy
+
+def time_mean_smooth(lc,window_size):
+  y=lc.get_y()
+  x=lc.get_x()
+  ws2=window_size/2.0
+  length=len(x)
+  newy=np.zeros(length)
+  for i in range(length):
+    mask=np.logical_and(x>=x[i]-ws2,x<x[i]+ws2)
+    newy[i]=np.mean(y[mask])
+  return newy
+
+def loess_smooth(lc,fraction):
+  if not imported_loess:
+    raise NotImplementedError
+  x=lc.get_x()
+  y=lc.get_y()
+  loess_data=loe.loess_1d(x,y,frac=fraction)
+  return loess_data[1]
+
+def percentile_clipping_time_mean_smooth(lc,in_args):
+  try:
+    iter(in_args)
+    assert len(in_args)==3
+  except (AssertionError,TypeError):
+    raise TypeError('Input to percentile clipping mean smooth must be iterable of length 3, of the form window size, lower percentile, upper percentile')
+  y=lc.get_y()
+  x=lc.get_x()
+  window_size=in_args[0]
+  ws2=window_size/2.0
+  lq=in_args[1]
+  uq=in_args[2]
+  length=len(x)
+  newy=np.zeros(length)
+  for i in range(length):
+    mask1=np.logical_and(x>=x[i]-ws2,x<x[i]+ws2)
+    windowed_y=y[mask1]
+    lq_val=np.percentile(windowed_y,lq)
+    uq_val=np.percentile(windowed_y,uq)
+    mask2=np.logical_and(windowed_y>=lq_val,windowed_y<=uq_val)
+    newy[i]=np.mean(windowed_y[mask2])
   return newy
 
 # ====== Folding! ======
@@ -878,5 +1133,18 @@ def rms(x):
 
 # ===== a non-OO adding method for lcs =====
 
-def add_lcs(lc1,lc2):
-  return lc1.added_data(lc2)
+def add_lcs(lc_list):
+  if not fi.is_iterable(lc_list):
+    raise TypeError('add_lcs function must take an list or other iterable containing lc objects!')
+  if len(lc_list)==0:
+    wr.warn('Empty list passed to add_lcs!  Returning None')
+    return None
+  base_lc=lc_list[0].copy()
+  if not isinstance(base_lc,lightcurve):
+    raise TypeError('Element 0 in iterable passed to lc_list is not lc-like!')
+  for i in range(1,len(lc_list)):
+    addon_lc=lc_list[i].copy()
+    if not isinstance(addon_lc,lightcurve):
+      raise TypeError('Element '+str(i)+' in iterable passed to lc_list is not lc-like!')
+    base_lc.add_data(addon_lc)
+  return base_lc

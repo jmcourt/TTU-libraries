@@ -1,4 +1,4 @@
-from   matplotlib import colors as co
+from matplotlib import colors as co
 from matplotlib import pyplot as pl
 import numpy as np
 import warnings as wr
@@ -61,14 +61,16 @@ class TwoD_Dataframe(object):
     return np.max(self.z)
   def get_min(self):
     return np.min(self.z)
+  def get_nozero_min(self):
+    return np.min(self.z[self.z>0])
 
   def log_colour_plot(self,colour_min=None,colour_max=None,ax=None):
     if colour_min==None:
-      colour_min=self.get_min()
+      colour_min=self.get_nozero_min()
     if colour_max==None:
-      colour_min=self.get_max()
+      colour_max=self.get_max()
     if ax==None:
-      ax-pl.gca()
+      ax=pl.gca()
     colourplot=ax.pcolor(self.x,self.y,self.z,norm=co.LogNorm(vmin=colour_min,vmax=colour_max))
     return colourplot
 

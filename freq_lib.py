@@ -68,3 +68,13 @@ def lomb_scargle(t,y,ye,freqs,norm='auto',generalised=True):
       norm=(len(t)-1)/2
 
     return norm*1/(YY*D)*(SS*(YC**2)+CC*(YS**2)-2*CS*YC*YS)
+
+# ======== Some useful functions for fitting (i.e. to power spectra) ========
+
+def lorentzian(x,A,mu,sig,N):
+  numerator=A*0.5*sig/np.pi
+  denominator=(x-mu)**2+(0.5*sig)**2
+  return numerator/denominator +N
+
+def gaussian(x,A,mu,sig,N):
+  return N+A*np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig,2.)))
