@@ -1,3 +1,4 @@
+import copy
 from matplotlib import colors as co
 from matplotlib import pyplot as pl
 import numpy as np
@@ -42,6 +43,29 @@ class TwoD_Dataframe(object):
     else:
       self.y_unit=''
 
+  def copy(self):
+    return copy.deepcopy(self)
+
+  def xdir_norm(self):
+    for i in range(len(self.z[:,0])):
+      row=self.z[i,:]
+      mask=np.logical_not(np.isnan(row))
+      if np.sum(mask)==0:
+        continue
+      mean=np.mean(row[mask])
+      std=np.std(row[mask])
+      self.z[i,:]=(self.z[i,:]-mean)/std
+
+  def ydir_norm(self):
+    for i in range(len(self.z[0,:])):
+      col=self.z[:,i]
+      mask=np.logical_not(np.isnan(col))
+      if np.sum(mask)==0:
+        continue
+      mean=np.mean(col[mask])
+      std=np.std(col[mask])
+      self.z[:,i]=(self.z[:,i]-mean)/std
+
   def get_x(self):
     return self.x
   def get_y(self):
@@ -50,28 +74,41 @@ class TwoD_Dataframe(object):
     return self.z
   def get_z(self):
     return self.z
+  def get_nanless_z(self):
+    mask=np.logical_not(np.isnan(self.z))
+    return self.z[mask]
 
   def get_mean(self):
-    return np.mean(self.z)
+    return np.mean(self.get_nanless_z())
   def get_median(self):
-    return np.median(self.z)
+    return np.median(self.get_nanless_z())
   def get_std(self):
-    return np.std(self.z)
+    return np.std(self.get_nanless_z())
   def get_max(self):
-    return np.max(self.z)
+    return np.max(self.get_nanless_z())
   def get_min(self):
-    return np.min(self.z)
+    return np.min(self.get_nanless_z())
   def get_nozero_min(self):
-    return np.min(self.z[self.z>0])
+    return np.min(self.get_nanless_z()[self.get_nanless_z()>0])
 
-  def log_colour_plot(self,colour_min=None,colour_max=None,ax=None):
+  def log_colour_plot(self,colour_min=None,colour_max=None,ax=None,cmap='viridis'):
     if colour_min==None:
       colour_min=self.get_nozero_min()
     if colour_max==None:
       colour_max=self.get_max()
     if ax==None:
       ax=pl.gca()
-    colourplot=ax.pcolor(self.x,self.y,self.z,norm=co.LogNorm(vmin=colour_min,vmax=colour_max))
+    colourplot=ax.pcolor(self.x,self.y,self.z,cmap=cmap,norm=co.LogNorm(vmin=colour_min,vmax=colour_max))
+    return colourplot
+
+  def lin_colour_plot(self,colour_min=None,colour_max=None,ax=None,cmap='viridis'):
+    if colour_min==None:
+      colour_min=self.get_min()
+    if colour_max==None:
+      colour_max=self.get_max()
+    if ax==None:
+      ax=pl.gca()
+    colourplot=ax.pcolor(self.x,self.y,self.z,cmap=cmap,norm=co.Normalize(vmin=colour_min,vmax=colour_max))
     return colourplot
 
   def dump(self,filename,header=True):

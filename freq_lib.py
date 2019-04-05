@@ -78,3 +78,6 @@ def lorentzian(x,A,mu,sig,N):
 
 def gaussian(x,A,mu,sig,N):
   return N+A*np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig,2.)))
+
+def gaussian_based(x,A,mu,sig):
+  return A*np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig,2.)))

@@ -91,15 +91,25 @@ class lightcurve(object):
     return self.y
   def get_ye(self):
     return self.ye
+  def get_length(self):
+    return len(self.get_x())
   def get_acceptable_gap(self):
     return self.acceptable_gap
   def get_xrange(self):
+    if self.is_empty():
+      return 0
     return self.x[-1]-self.x[0]
   def get_yrange(self):
+    if self.is_empty():
+      return 0
     return self.y[-1]-self.y[0]
   def get_start_time(self):
+    if self.is_empty():
+      return 0
     return self.x[0]
   def get_end_time(self):
+    if self.is_empty():
+      return 0
     return self.x[-1]
   def get_title(self):
     return self.objname
@@ -416,7 +426,6 @@ class lightcurve(object):
   def fit_qpo(self,f_min,f_max,plot=False,**kwargs):
     frange=f_max-f_min
     newlc=self.copy()
-    #newlc.lomb_scargle(np.arange(f_min,f_max,frange/1000))
     newlc.lomb_scargle(np.arange(f_min,f_max,self.get_freq_resolution()))
     newlc.plot_lomb_scargle()
     init_vals=(np.max(newlc.ls_freqs),f_min+frange/2,frange/2,0)
@@ -471,26 +480,15 @@ class lightcurve(object):
       wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping grabbing!')
     return self.dynamic_ls_data
 
-  def plot_lomb_scargle_spectrogram(self,colour_range='auto',filename=None,with_lc=True,with_1d_ls=True,block=False):
-
+  def plot_lomb_scargle_spectrogram(self,colour_range='auto',output=None,block=False,cmap='viridis',colourbar=True,cbar_ax=None,**kwargs):
     if 'dynamic_ls_data' not in self.__dict__:
-      wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping plotting!')
-      return None
+      raise dat.DataError('Dynamic Lomb-Scargle Spectrum not prepared!')
     elif self.dynamic_ls_data.get_max()<=0:
-      wr.warn('Dynamic LS spectrum is empty!  Is your Acceptable Gap parameter too small?')
-      return None
-    if with_lc:
-      self.lomb_scargle(self.dynamic_ls_data.get_y())  # if the user wants a 1D LS plotted but hasnt made one yet, make one with the same params as the 2D LS
-
-    size_ratio=4
-    grid=gs.GridSpec(size_ratio+with_lc,size_ratio+with_1d_ls)
-
-    fig=pl.figure(figsize=(20,20))
-    ax_main=fig.add_subplot(grid[:size_ratio,:size_ratio])
-    ax_main.set_title(self.get_title()+' Dynamic Lomb-Scargle Periodogram')
-    if not with_lc:
-      ax_main.set_xlabel('Time '+self.t_unit_string())
-    ax_main.set_ylabel('Frequency ('+self.t_units+'^-1)')
+      raise dat.DataError('Dynamic LS spectrum is empty!  Is your Acceptable Gap parameter too small?')
+    ax=fi.filter_axes(output)
+    ax.set_title(self.get_title()+' Dynamic Lomb-Scargle Periodogram')
+    ax.set_xlabel('Time '+self.t_unit_string())
+    ax.set_ylabel('Frequency ('+self.t_units+'^-1)')
     Z=self.dynamic_ls_data.get_z()
     if colour_range=='auto':
       colour_min=np.min(Z[Z>0])
@@ -498,13 +496,39 @@ class lightcurve(object):
     else:
       colour_min=colour_range[0]
       colour_max=colour_range[1]
-    c=self.dynamic_ls_data.log_colour_plot(colour_min=colour_min,colour_max=colour_max,ax=ax_main)
-    if (not with_lc) and (not with_1d_ls):
-      pl.colorbar(c,ax=ax_main)
+    c=self.dynamic_ls_data.log_colour_plot(colour_min=colour_min,colour_max=colour_max,ax=ax,cmap=cmap)
+    if colourbar:
+      if cbar_ax==None:
+        c=pl.colorbar(c,ax=ax)
+      else:
+        c=pl.colorbar(c,cax=cbar_ax)
+    fi.plot_save(output,block)
+    return c
+
+  def plot_lomb_scargle_spectrogram_combo(self,colour_range='auto',filename=None,with_lc=True,with_1d_ls=True,figsize=(20,20),cmap='viridis',block=False):
+
+    if 'dynamic_ls_data' not in self.__dict__:
+      wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping plotting!')
+      return None
+    elif self.dynamic_ls_data.get_max()<=0:
+      wr.warn('Dynamic LS spectrum is empty!  Is your Acceptable Gap parameter too small?')
+      return None
+    if with_1d_ls:
+      self.lomb_scargle(self.dynamic_ls_data.get_y())  # if the user wants a 1D LS plotted but hasnt made one yet, make one with the same params as the 2D LS
+
+    size_ratio=4
+    grid=gs.GridSpec(size_ratio+with_lc,size_ratio+with_1d_ls)
+
+    fig=pl.figure(figsize=figsize)
+    ax_main=fig.add_subplot(grid[:size_ratio,:size_ratio])
+    self.plot_lomb_scargle_spectrogram(output=ax_main,colour_range=colour_range,colourbar=(not with_lc) and (not with_1d_ls))
+    if with_lc:
+      ax_main.set_xlabel('')
     if with_lc:
       ax_main.set_xticks([])
       ax_lc=fig.add_subplot(grid[size_ratio,:size_ratio])
       self.quickplot(output=ax_lc)
+      ax_lc.set_title('')
       ax_lc.set_ylabel('Rate '+self.y_unit_string())
       ax_lc.set_xlim(min(self.dynamic_ls_data.get_x()),max(self.dynamic_ls_data.get_x()))
       ax_lc.set_xlabel('Time '+self.t_unit_string())
@@ -596,6 +620,16 @@ class lightcurve(object):
     calved_lc.calve(stime,etime)
     return calved_lc
 
+  def calve_by_length(self,length):
+    self.x=self.x[:length]
+    self.y=self.y[:length]
+    self.ye=self.ye[:length]
+
+  def calved_by_length(self,length):
+    calved_lc=self.copy()
+    calved_lc.calve_by_length(length)
+    return calved_lc
+
   # Attempts to detrend the data for a given window size.
 
   def detrend(self,window_size,method='savgol'):
@@ -637,6 +671,72 @@ class lightcurve(object):
     shuffled_lc=self.copy()
     shuffled_lc.shuffle()
     return shuffled_lc
+
+  # Bin evener: forces data into bins of even width!
+  def even_bins(self,binsize=None):
+    if binsize==None: binsize=self.binsize
+    newx=np.arange(self.get_start_time(),self.get_end_time(),binsize)
+    newy=np.zeros(len(newx))*np.nan
+    newe=np.zeros(len(newx))*np.nan
+    for i in range(len(newx)):
+      b_left=newx[i]
+      mask=np.logical_and(self.x>=b_left,self.x<b_left+binsize)
+      N=np.sum(mask)
+      if N==0:
+        continue
+      newy[i]=np.mean(self.y[mask])
+      newe[i]=np.sqrt(np.sum(self.ye[mask]**2))/N
+    self.x=newx
+    self.y=newy
+    self.ye=newe
+    self.binsize=binsize
+
+  def evened_bins(self,binsize=None):
+    evened_lc=self.copy()
+    evened_lc.even_bins(binsize)
+    return evened_lc
+
+  # Flux phase diagrams!
+
+  def flux_phase_diagram(self,period,Ncycles_per_line=2):
+    phase_bins=round(period/self.binsize)*Ncycles_per_line
+    even_data=self.evened_bins(period*Ncycles_per_line/phase_bins)
+    length=even_data.get_length()
+    length=(length//phase_bins)*phase_bins
+    even_data.calve_by_length(length)
+    n_columns=int(even_data.get_length()/phase_bins)
+    ph_axis=np.arange(0,1,1/phase_bins)*Ncycles_per_line
+    cy_axis=np.arange(0,n_columns)*Ncycles_per_line
+    Z=even_data.get_y().reshape(n_columns,phase_bins)
+    self.fp_data=dat.TwoD_Dataframe(ph_axis,cy_axis,Z)
+    
+  def plot_flux_phase_diagram(self,output=None,block=False,norm_per_line=True,nans_as=np.nan,colour_range='auto',cmap='viridis',colourbar=False,cbar_ax=None):
+    plot_data=self.fp_data.copy()
+    ax=fi.filter_axes(output)
+    ax.set_title(self.get_title()+' Flux-Phase Diagram')
+    ax.set_xlabel('Phase')
+    ax.set_ylabel('Cycle #')
+    if norm_per_line:
+      plot_data.xdir_norm()
+    if nans_as=='mean':
+      nans_as=plot_data.get_mean()
+    elif nans_as=='min':
+      nans_as=plot_data.get_min()
+    plot_data.z[np.isnan(plot_data.z)]=nans_as
+    if colour_range=='auto':
+      colour_min=plot_data.get_min()
+      colour_max=plot_data.get_max()
+    else:
+      colour_min=colour_range[0]
+      colour_max=colour_range[1]
+    c=plot_data.lin_colour_plot(colour_min=colour_min,colour_max=colour_max,ax=ax,cmap=cmap)
+    if colourbar:
+      if cbar_ax==None:
+        c=pl.colorbar(c,ax=ax)
+      else:
+        c=pl.colorbar(c,cax=cbar_ax)
+    fi.plot_save(output,block)
+    return c
 
   # Phase-folder!  Does a bog-standard fixed period phase-folding
 
