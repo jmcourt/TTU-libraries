@@ -70,6 +70,9 @@ class TwoD_Dataframe(object):
     return self.x
   def get_y(self):
     return self.y
+  def get_xy_stack(self):
+    X,Y=np.meshgrid(self.get_x(),self.get_y())
+    return np.vstack((X.ravel(),Y.ravel()))
   def get_data(self):
     return self.z
   def get_z(self):

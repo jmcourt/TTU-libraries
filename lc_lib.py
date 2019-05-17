@@ -3,6 +3,7 @@ from   astropy.io import fits
 import copy
 import data_lib as dat
 import file_lib as fi
+import fold_lib as fo
 import freq_lib as frq
 from   matplotlib import gridspec as gs
 from   matplotlib import pyplot as pl
@@ -171,22 +172,25 @@ class lightcurve(object):
 
   # Self-explanatory quick-and-dirty plot machine.  BG plot checks if bg data is available, and dies if not
 
-  def quickplot(self,output=None,errors=True,block=False,**kwargs):
+  def quickplot(self,output=None,errors=True,block=False,title=True,**kwargs):
     if self.is_folded:
       x=np.append(self.x,self.x+1)
       y=np.append(self.y,self.y)
       ye=np.append(self.ye,self.ye)
+      xlab='Phase'
     else:
       x=self.x
       y=self.y
       ye=self.ye
+      xlab='Time '+self.t_unit_string()
     ax=fi.filter_axes(output)
-    ax.set_title(self.get_title()+' Quick Plot')
+    if title:
+      ax.set_title(self.get_title()+' Quick Plot')
     if errors:
       ax.errorbar(x,y,yerr=ye,**kwargs)
     else:
-      ax.plot(x,y,**kwargs,**kwargs)
-    ax.set_xlabel('Time '+self.t_unit_string())
+      ax.plot(x,y,**kwargs)
+    ax.set_xlabel(xlab)
     ax.set_ylabel('Rate '+self.y_unit_string())
     fi.plot_save(output,block)
 
@@ -200,14 +204,67 @@ class lightcurve(object):
     ax.legend()
     fi.plot_save(output,block)
 
+  # slightly more adaptable plotting machine which takes dict inputs to give separate kwargs to errorbars and main line
+
+  def plot_lc(self,output=None,block=False,title=True,xlabel=True,ylabel=True,kwargs={'color':'k'},ekwargs={'color':'0.7'}):
+    if self.is_folded:
+      x=np.append(self.x,self.x+1)
+      y=np.append(self.y,self.y)
+      ye=np.append(self.ye,self.ye)
+      xlab='Phase'
+    else:
+      x=self.x
+      y=self.y
+      ye=self.ye
+      xlab='Time '+self.t_unit_string()
+    ax=fi.filter_axes(output)
+
+    if title==True:
+      ax.set_title(self.get_title()+' Quick Plot')
+    elif title==False:
+      pass
+    else:
+      ax.set_title(title)
+
+    if xlabel==True:
+      ax.set_xlabel(xlab)
+    elif xlabel==False:
+      pass
+    else:
+      ax.set_xlabel(xlabel)
+
+    if ylabel==True:
+      ax.set_ylabel('Rate '+self.y_unit_string())
+    elif ylabel==False:
+      pass
+    else:
+      ax.set_ylabel(ylabel)
+
+    ax.errorbar(x,y,yerr=ye,zorder=-1,**ekwargs)
+    ax.plot(x,y,zorder=0,**kwargs)
+    fi.plot_save(output,block)
+
   # Creates a scatter plot of an unfolded lightcurve where the x-coord of each point is its phase
 
-  def plot_folded_scatterplot(self,period,output=None,block=False,**kwargs):
+  def plot_folded_scatterplot(self,period,output=None,block=False,**kwargs):  # xxxxx
     if self.is_folded:
-      wr.warning("Can't fold that which is already folded!")
+      wr.warn("Can't fold that which is already folded!")
     else:
+      folder=fo.linear_folder(self,period)
       ax=fi.filter_axes(output)
-      p=(self.x%period)/period
+      p=folder.get_p()
+      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/self.get_len(),0.2),color='k',**kwargs)
+      ax.set_xlabel('Phase')
+      ax.set_ylabel('Rate '+self.y_unit_string())
+      fi.plot_save(output,block)
+
+  def plot_varifolded_scatterplot(self,zero_list,output=None,block=False,**kwargs):  # xxxxx
+    if self.is_folded:
+      wr.warn("Can't fold that which is already folded!")
+    else:
+      folder=fo.varifolder(self,zero_list)
+      ax=fi.filter_axes(output)
+      p=folder.get_p()
       ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/self.get_len(),0.2),color='k',**kwargs)
       ax.set_xlabel('Phase')
       ax.set_ylabel('Rate '+self.y_unit_string())
@@ -357,7 +414,7 @@ class lightcurve(object):
   def get_nyquist(self):
     return 0.5/self.binsize
 
-  def fourier(self,norm,normname='custom'):
+  def fourier(self,norm='leahy',normname='custom'):
     wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
     try:
       norm=float(norm)
@@ -382,7 +439,7 @@ class lightcurve(object):
         wr.warn('Invalid Fourier normalisation '+norm+' specified: using None normalisation')
       self.ft_norm='none'
       self.ft=ft
-    self.ft_freqs=np.linspace(0,self.get_nyquist,len(ft)+1)[1:]
+    self.ft_freqs=np.linspace(0,self.get_nyquist(),len(ft)+1)[1:]
       
   def plot_fourier(self,output=None,**kwargs):
     if 'ft' not in self.__dict__: self.fourier('leahy')
@@ -406,7 +463,8 @@ class lightcurve(object):
     self.ls_freqs=np.array(freqrange)
 
   def plot_lomb_scargle(self,log=False,output=None,block=False,**kwargs):
-    if 'ls' not in self.__dict__: self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
+    print('ls' in self.__dict__)
+    #if not ('ls' in self.__dict__): self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Lomb-Scargle Periodogram')
     if log:
@@ -439,7 +497,7 @@ class lightcurve(object):
       pl.show()
     return fit_results
 
-  def lomb_scargle_spectrogram(self,freqrange,binsize,bin_separation):
+  def lomb_scargle_spectrogram(self,freqrange,binsize,bin_separation,ignore_gaps=True):
     min_points=80
     progress=0
     starttime=self.get_start_time()
@@ -456,8 +514,9 @@ class lightcurve(object):
         progress=new_progress
       calve_st=starttime+i*bin_separation
       calve_ed=calve_st+binsize
-      if is_overlap((calve_st,calve_ed),data_gaps):
-        continue
+      if ignore_gaps:
+        if is_overlap((calve_st,calve_ed),data_gaps):
+          continue
       calved_lc=self.calved(calve_st,calve_ed)
       calved_lc.lomb_scargle(freqrange,norm=lsnorm)
       lomb_scargle_spec=calved_lc.ls
@@ -740,6 +799,15 @@ class lightcurve(object):
 
   # Phase-folder!  Does a bog-standard fixed period phase-folding
 
+  def plot_with_period(self,period,t0=0,output=None,block=False,**kwargs):
+    ax=fi.filter_axes(output)
+    self.quickplot(output=ax,**kwargs)
+    n0=int((self.get_start_time()-t0)//period)+1
+    n1=int((self.get_end_time()-t0)//period)+1
+    for n in range(n0,n1):
+      ax.axvline(n*period+t0,color='k',zorder=-1)
+    fi.plot_save(output,block)
+
   def get_phases(self,period):
     return (self.x%period)/period
 
@@ -763,19 +831,54 @@ class lightcurve(object):
       Ncycles_lc.set_x_axis_to_Ncycles(period)
       return Ncycles_lc
 
-  def phase_fold(self,period,phase_bins=100):
-    folder=phase_folder(self,period,phase_bins)
-    self.x=folder.get_x()
-    self.y=folder.get_y()
-    self.ye=folder.get_ye()
+  def phase_fold(self,period,phase_bins=100,standev_errors=False):
+    if self.is_folded:
+      wr.warn('Already folded!  Skipping!')
+    return None
+    self.folder=fo.linear_folder(self,period)
+    self.folder.fold(phase_bins,standev_errors=standev_errors)
+    self.x=self.folder.get_fx()
+    self.y=self.folder.get_fy()
+    self.ye=self.folder.get_fye()
     self.meta['folded_period']=period
     self.is_folded=True
     self.period=period
     self.x_axis_is_phase=True
 
-  def phase_folded(self,period,phase_bins=100):
+  def phase_folded(self,period,phase_bins=100,standev_errors=False):
     folded_lc=self.copy()
-    folded_lc.phase_fold(period,phase_bins)
+    if self.is_folded:
+      wr.warn('Already folded!  Skipping!')
+      return folded_lc
+    folded_lc.phase_fold(period,phase_bins,standev_errors=standev_errors)
+    return folded_lc
+
+  # Varifolder from PANTHEON!  Probably super unstable!
+
+  def varifold(self,zeros,phase_bins=100,standev_errors=False):
+    if self.is_folded:
+      wr.warn('Already folded!  Skipping!')
+    if len(zeros)<2:
+      raise dat.DataError('Must provide at least two zero phase points (and preferably quite a few more!)')
+    zeros=np.array(zeros)
+    zeros.sort()
+    self.folder=fo.varifolder(self,zeros)
+    self.folder.fold(phase_bins,standev_errors=standev_errors)
+    self.x=self.folder.get_fx()
+    self.y=self.folder.get_fy()
+    self.ye=self.folder.get_fye()
+    self.meta['phase_zeros']=zeros
+    self.is_folded=True
+    self.phase_zeros=zeros
+    self.x_axis_is_phase=True
+    pl.figure()
+
+  def varifolded(self,zeros,phase_bins=100,standev_errors=False):
+    folded_lc=self.copy()
+    if self.is_folded:
+      wr.warn('Already folded!  Skipping!')
+      return folded_lc
+    folded_lc.varifold(zeros,phase_bins,standev_errors=standev_errors)
     return folded_lc
 
   # Gets the period at which the dispersion in a folded lightcurve's phase bins is minimum.  One way of working out a period
@@ -783,7 +886,7 @@ class lightcurve(object):
   def get_minimum_dispersion_period(self,estimate,phase_bins=100,max_iterations=7,variance=0.1,error=np.inf):
     x=[];y=[]
     def min_dispersion_test_function(p):
-      test_lc=self.phase_folded(p,phase_bins=phase_bins)
+      test_lc=self.phase_folded(p,phase_bins=phase_bins,standev_errors=True)
       return np.sum(test_lc.get_ye())
     for i in np.arange(estimate*(1-variance),estimate*(1+variance),estimate*variance/10.):
       x.append(i)
@@ -1192,39 +1295,6 @@ def percentile_clipping_time_mean_smooth(lc,in_args):
     mask2=np.logical_and(windowed_y>=lq_val,windowed_y<=uq_val)
     newy[i]=np.mean(windowed_y[mask2])
   return newy
-
-# ====== Folding! ======
-
-class phase_folder(object):
-  def __init__(self,lc,period,phase_bins,standev_errors=True):    
-    # Two different errors can be returned.  Default is the standard deviation of the distribution of y in each bin.  Otherwise can just propagate errors normally.
-    x=lc.get_x()
-    y=lc.get_y()
-    ye=lc.get_ye()
-    px=(x%period)/period
-    py=np.zeros(phase_bins)
-    pye=np.zeros(phase_bins)
-    for i in range(phase_bins):
-      lower_phase=i/phase_bins
-      upper_phase=(i+1)/phase_bins
-      mask=np.logical_and(px>=lower_phase,px<upper_phase)
-      py[i]=np.mean(y[mask])
-      if standev_errors:
-        pye[i]=np.std(y[mask])
-      else:
-        pye[i]=np.sqrt(np.sum(ye[mask]**2)/np.sum(mask))
-    self.x=np.arange(0,1,1/phase_bins)
-    self.y=py
-    self.ye=pye
-    self.period=period
-    self.phase_bins=phase_bins
-
-  def get_x(self):
-    return self.x
-  def get_y(self):
-    return self.y
-  def get_ye(self):
-    return self.ye
 
 # ===== some stats functions =====
 
