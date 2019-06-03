@@ -41,9 +41,17 @@ class lightcurve(object):
     ty=np.array(y).astype(float)
     tye=np.array(ye).astype(float)
     nanmask=np.logical_not(np.logical_and(np.isnan(ty),np.isnan(tye)))
-    self.x=tx[nanmask]
-    self.y=ty[nanmask]
-    self.ye=tye[nanmask]
+    tx=tx[nanmask]
+    ty=ty[nanmask]
+    tye=tye[nanmask]
+    print(11111)
+    #sort data by time
+
+    sorted_args=tx.argsort()
+    self.x=tx[sorted_args]
+    self.y=ty[sorted_args]
+    self.ye=tye[sorted_args]
+
     if 'acceptable_gap' not in meta.keys():  # the gap width before a data gap is declared
       meta['acceptable_gap']=1.5
     self.acceptable_gap=meta['acceptable_gap'] # anything more than 1.5 times the median time separation is considered a data gap
@@ -1166,9 +1174,15 @@ def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=',',meta_sep=':'):
       l=line.split(data_sep)
       if len(l)<=mxind:
         continue
-      x.append(float(l[x_ind]))
-      y.append(float(l[y_ind]))
-      ye.append(float(l[e_ind]))
+      try:
+        xin=float(l[x_ind])
+        yin=float(l[y_ind])
+        ein=float(l[e_ind])
+      except:
+        continue
+      x.append(xin)
+      y.append(yin)
+      ye.append(ein)
   f.close()
   return lightcurve(x,y,ye,meta=imeta)
 
