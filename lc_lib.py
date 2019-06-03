@@ -44,9 +44,7 @@ class lightcurve(object):
     tx=tx[nanmask]
     ty=ty[nanmask]
     tye=tye[nanmask]
-    print(11111)
     #sort data by time
-
     sorted_args=tx.argsort()
     self.x=tx[sorted_args]
     self.y=ty[sorted_args]
