@@ -9,6 +9,7 @@ from   matplotlib import gridspec as gs
 from   matplotlib import pyplot as pl
 import numpy as np
 import random as rn
+from   requests import exceptions as rx
 from   scipy import fftpack as fou
 from   scipy import interpolate as intp
 from   scipy import optimize as optm
@@ -88,7 +89,7 @@ class lightcurve(object):
   # Simple data checks
 
   def is_empty(self):
-    return self.get_len()==0
+    return self.get_length()==0
 
   # Basic getters & setters
 
@@ -120,16 +121,26 @@ class lightcurve(object):
     return self.x[-1]
   def get_title(self):
     return self.objname
-  def get_len(self):
-    return len(self.x)
 
   def set_acceptable_gap(self,gap):
     self.acceptable_gap=gap
 
   # Get me a spline!
 
-  def get_spline(self,kind='slinear'):
-    spline=intp.interp1d(self.x,self.y,kind=kind,fill_value='extrapolate')
+  def get_spline(self,kind='slinear',fill_value='extrapolate'):
+    spline=intp.interp1d(self.x,self.y,kind=kind,fill_value=fill_value)
+    return spline
+
+  def get_err_spline(self,kind='slinear',fill_value='extrapolate'):
+    spline=intp.interp1d(self.x,self.ye,kind=kind,fill_value=fill_value)
+    return spline
+
+  def get_bg_spline(self,kind='slinear',fill_value='extrapolate'):
+    spline=intp.interp1d(self.bx,self.b,kind=kind,fill_value=fill_value)
+    return spline
+
+  def get_bg_err_spline(self,kind='slinear',fill_value='extrapolate'):
+    spline=intp.interp1d(self.bx,self.be,kind=kind,fill_value=fill_value)
     return spline
 
   # Dump contents to a csv
@@ -143,7 +154,7 @@ class lightcurve(object):
       if type(self.meta[key]) in (str,int,float):
         f.write(key+':'+str(self.meta[key])+'\n')
     f.write('SCIENCE_DATA\n')
-    for i in range(self.get_len()):
+    for i in range(self.get_length()):
       f.write(str(self.x[i])+','+str(self.y[i])+','+str(self.ye[i])+'\n')
     f.close()
 
@@ -173,7 +184,36 @@ class lightcurve(object):
     added_lc.add_time(time)
     return added_lc
 
+  def multiply_time(self,constant):
+    self.x=self.x*constant
+    self.binsize=self.binsize*constant
+    self.multiply_gtis(constant)
+    if 'b' in self.__dict__:
+      self.bx=self.bx*constant
+
+  def multiplied_time(self,constant):
+    multiplied_lc=self.copy()
+    multiplied_lc.multiply_time(constant)
+    return multiplied_lc
+
+  def convert_days_to_s(self):
+    self.multiply_time(86400)
+    self.t_units='s'
+
+  def convert_s_to_days(self):
+    self.multiply_time(1./86400.)
+    self.t_units='days'
+
+  def converted_days_to_s(self):
+    return self.multiplied_time(86400)
+
+  def converted_s_to_days(self):
+    return self.multiplied_time(1./86400.)
+
   def shift_gtis(self,shift):
+    pass    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
+
+  def multiply_gtis(self,constant):
     pass    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
 
   # Self-explanatory quick-and-dirty plot machine.  BG plot checks if bg data is available, and dies if not
@@ -252,26 +292,26 @@ class lightcurve(object):
 
   # Creates a scatter plot of an unfolded lightcurve where the x-coord of each point is its phase
 
-  def plot_folded_scatterplot(self,period,output=None,block=False,**kwargs):  # xxxxx
+  def plot_folded_scatterplot(self,period,output=None,block=False,**kwargs):
     if self.is_folded:
       wr.warn("Can't fold that which is already folded!")
     else:
       folder=fo.linear_folder(self,period)
       ax=fi.filter_axes(output)
       p=folder.get_p()
-      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/self.get_len(),0.2),color='k',**kwargs)
+      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/self.get_length(),0.2),color='k',**kwargs)
       ax.set_xlabel('Phase')
       ax.set_ylabel('Rate '+self.y_unit_string())
       fi.plot_save(output,block)
 
-  def plot_varifolded_scatterplot(self,zero_list,output=None,block=False,**kwargs):  # xxxxx
+  def plot_varifolded_scatterplot(self,zero_list,output=None,block=False,**kwargs):
     if self.is_folded:
       wr.warn("Can't fold that which is already folded!")
     else:
       folder=fo.varifolder(self,zero_list)
       ax=fi.filter_axes(output)
       p=folder.get_p()
-      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/self.get_len(),0.2),color='k',**kwargs)
+      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/self.get_length(),0.2),color='k',**kwargs)
       ax.set_xlabel('Phase')
       ax.set_ylabel('Rate '+self.y_unit_string())
       fi.plot_save(output,block)
@@ -420,8 +460,9 @@ class lightcurve(object):
   def get_nyquist(self):
     return 0.5/self.binsize
 
-  def fourier(self,norm='leahy',normname='custom'):
-    wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
+  def fourier(self,norm='leahy',normname='custom',squelch=False,const=2):
+    if not squelch:
+      wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
     try:
       norm=float(norm)
       custnorm=True
@@ -429,29 +470,70 @@ class lightcurve(object):
       norm=norm.lower()
       custnorm=False
     raw_ft=fou.fft(self.y)
-    ft=np.abs(raw_ft[1:self.get_len()//2])**2  # crop all data above nyquist and obtain the amplitudes of the FT
+    ft=np.abs(raw_ft[1:self.get_length()//2])**2  # crop all data above nyquist and obtain the amplitudes of the FT
     if custnorm:
       self.ft_norm=normname
       self.ft=ft*norm
     elif norm=='leahy':
       self.ft_norm='leahy'
       self.ft=frq.leahy(ft,np.sum(self.y))
-    elif norm=='rms':
+    elif norm=='rms' or norm=='nupnu':
       if 'b' not in self.__dict__: raise NotImplementedError('No background data available to RMS normalise FT in '+str(self.__class__)+' object')
       self.ft_norm='rms'
-      self.ft=frq.rms(ft,np.sum(self.y),np.mean(self.y+self.b),np.mean(self.b))
+      self.ft=frq.rms(ft,np.sum(self.y),np.mean(self.y+self.b),np.mean(self.b),const=const)
     else:
-      if norm!='none':
+      if norm!='none' and not squelch:
         wr.warn('Invalid Fourier normalisation '+norm+' specified: using None normalisation')
       self.ft_norm='none'
       self.ft=ft
-    self.ft_freqs=np.linspace(0,self.get_nyquist(),len(ft)+1)[1:]
-      
-  def plot_fourier(self,output=None,**kwargs):
+    freqs=np.linspace(0,self.get_nyquist(),len(ft)+1)[1:]
+    if norm=='nupnu':
+      self.ft=self.ft*freqs
+    self.ft_e=self.ft
+    self.ft_freqs=freqs
+
+  def windowed_fourier(self,window_size,norm='leahy',normname='custom',const=2,squelch=False):
+    if not squelch:
+      wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
+    npts=int(window_size/self.binsize)
+    lognpoints=np.log2(npts)
+    npts=2**round(lognpoints)
+    init_arrays=False
+    new_window_size=npts*self.binsize
+    if np.abs(new_window_size-window_size)>0.1*window_size and not squelch:
+      print('Window size rounded to '+str(new_window_size)+' '+self.t_units)
+    zero=self.get_start_time()
+    data_gaps=self.get_data_gaps()
+    for win_i in range(0,int(self.get_xrange()/new_window_size)):
+      st=zero+win_i*new_window_size
+      ed=zero+(win_i+1)*new_window_size
+      if is_overlap((st,ed),data_gaps):
+        continue
+      window=self.calved(st,ed)
+      window.fourier(norm=norm,normname=normname,const=const,squelch=True)
+      if not init_arrays:
+        init_arrays=True
+        total=1
+        self.ft_freqs=window.ft_freqs
+        self.ft_norm=window.ft_norm
+        ft=window.ft
+        ft_e=window.ft_e**2
+      else:
+        total+=1
+        ft+=window.ft
+        ft_e+=window.ft_e**2
+    self.ft=ft/total
+    self.ft_e=np.sqrt(ft_e)/total
+    
+  def plot_fourier(self,output=None,log=False,logx=False,**kwargs):
     if 'ft' not in self.__dict__: self.fourier('leahy')
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Fourier Spectrum')
-    ax.plot(self.ft_freqs,self.ft,**kwargs)
+    if log:
+      ax.semilogy()
+    if logx:
+      ax.semilogx()
+    ax.errorbar(self.ft_freqs,self.ft,yerr=self.ft_e,**kwargs)
     ax.set_ylabel('"'+self.ft_norm+'"-normalised power')
     ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
     fi.plot_save(output,**kwargs)
@@ -468,9 +550,19 @@ class lightcurve(object):
     self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm)
     self.ls_freqs=np.array(freqrange)
 
+  def auto_lomb_scargle(self,min_f=None,max_f=None,resolution=None,n0=1):
+    # n0 is the oversampling ratio.  5 is reccommended by e.g. Schwarzenberg-Czerny 1996
+    if min_f==None:
+      min_f=1/self.get_xrange()
+    if max_f==None:
+      max_f=self.get_nyquist()
+    if resolution==None:
+      resolution=1/(n0*self.get_xrange())
+    f_range=np.arange(min_f,max_f,resolution)
+    self.lomb_scargle(f_range)
+
   def plot_lomb_scargle(self,log=False,output=None,block=False,**kwargs):
-    print('ls' in self.__dict__)
-    #if not ('ls' in self.__dict__): self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
+    if not ('ls' in self.__dict__): self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Lomb-Scargle Periodogram')
     if log:
@@ -484,7 +576,7 @@ class lightcurve(object):
   def get_freq_resolution(self): # get the minimum frequency resolution for LS or Fourier without oversampling
     minf=1/self.get_xrange()
     maxf=self.get_nyquist()
-    ndat=self.get_len()
+    ndat=self.get_length()
     return (maxf-minf)/ndat
 
   def fit_qpo(self,f_min,f_max,plot=False,**kwargs):
@@ -510,7 +602,7 @@ class lightcurve(object):
     numbins=max(int(((self.get_xrange())-binsize)//bin_separation),0)
     if numbins==0:
       raise ValueError('Bin width longer than data set!')
-    lsnorm=(self.get_len()-1)/(2.0*numbins)
+    lsnorm=(self.get_length()-1)/(2.0*numbins)
     dynamic_spectrum=np.zeros((numbins,len(freqrange)))
     data_gaps=self.get_data_gaps()
     for i in range(numbins):
@@ -679,6 +771,14 @@ class lightcurve(object):
     self.x=self.x[mask]
     self.y=self.y[mask]
     self.ye=self.ye[mask]
+    if 'b' in self.__dict__:
+      with wr.catch_warnings():
+        wr.filterwarnings('ignore',message='invalid value encountered in less')
+        wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
+        mask=np.logical_and(self.bx>=stime,self.bx<etime)
+      self.bx=self.bx[mask]
+      self.b=self.b[mask]
+      self.be=self.be[mask]
 
   def calved(self,stime,etime):
     calved_lc=self.copy()
@@ -697,16 +797,19 @@ class lightcurve(object):
 
   # Attempts to detrend the data for a given window size.
 
-  def detrend(self,window_size,method='savgol'):
+  def detrend(self,window_size,method=None):
+    if method==None:
+      method='time_mean'
+      print('No smoothing method specified; using Time Mean')
     newy=self.y-smart_smooth(self,window_size,method)
     self.y=newy
 
-  def detrended(self,window_size,method='savgol'):
+  def detrended(self,window_size,method=None):
     detrended_lc=self.copy()
     detrended_lc.detrend(window_size,method)
     return detrended_lc
 
-  def plot_with_trend(self,window_size,method='savgol',output=None,block=False,**kwargs):
+  def plot_with_trend(self,window_size,method=None,output=None,block=False,**kwargs):
     ax=fi.filter_axes(output)
     smoothed_lc=self.smoothed(window_size,method)
     self.quickplot(output=ax,**kwargs)
@@ -715,11 +818,14 @@ class lightcurve(object):
 
   # smooths the data for a given window size.  Sorta the opposite of above.
 
-  def smooth(self,window_size,method='savgol'):
+  def smooth(self,window_size,method=None):
+    if method==None:
+      method='time_mean'
+      print('No smoothing method specified; using Time Mean')
     newy=smart_smooth(self,window_size,method)
     self.y=newy
 
-  def smoothed(self,window_size,method='savgol'):
+  def smoothed(self,window_size,method=None):
     smoothed_lc=self.copy()
     smoothed_lc.smooth(window_size,method)
     return smoothed_lc
@@ -727,7 +833,7 @@ class lightcurve(object):
   # Shuffler; returns the y,ye pairs in a random order
 
   def shuffle(self):
-    indices=np.arange(self.get_len(),dtype=int)
+    indices=np.arange(self.get_length(),dtype=int)
     rn.shuffle(indices)
     self.y=self.y[indices]
     self.ye=self.ye[indices]
@@ -737,7 +843,7 @@ class lightcurve(object):
     shuffled_lc.shuffle()
     return shuffled_lc
 
-  # Bin evener: forces data into bins of even width!
+  # Bin evener & spline evener: forces data into bins of even width!
   def even_bins(self,binsize=None):
     if binsize==None: binsize=self.binsize
     newx=np.arange(self.get_start_time(),self.get_end_time(),binsize)
@@ -761,10 +867,60 @@ class lightcurve(object):
     evened_lc.even_bins(binsize)
     return evened_lc
 
+  def spline_even(self,binsize=None):
+    if binsize==None: binsize=self.binsize
+    gaps=self.get_data_gaps()
+    newx=np.arange(self.get_start_time(),self.get_end_time(),binsize)
+
+    evener_spline=self.get_spline()
+    errorer_spline=self.get_err_spline()
+
+    newy=evener_spline(newx)
+    newye=errorer_spline(newx)
+
+    if 'b' in self.__dict__:
+      evener_b_spline=self.get_bg_spline()
+      errorer_b_spline=self.get_bg_err_spline()
+      newby=evener_b_spline(newx)
+      newbye=errorer_b_spline(newx)
+
+    mask=np.ones(len(newx))
+    for gap in gaps:
+      gapmask=np.logical_or(newx<gap[0],newx>gap[1])
+      mask=np.logical_and(mask,gapmask)
+
+    self.x=newx[mask]
+    self.y=newy[mask]
+    self.ye=newye[mask]
+    self.binsize=binsize
+
+    if 'b' in self.__dict__:
+      self.bx=newx[mask]
+      self.b=newby[mask]
+      self.be=newbye[mask]
+
+  def spline_evened(self,binsize=None):
+    evened_lc=self.copy()
+    evened_lc.spline_even(binsize)
+    return evened_lc
+
+  # Eww yuck get rid of magnitude measurements
+
+  def demagnitude(self):
+    yefrac=self.ye/self.y
+    self.y=(100**0.2)**-self.y
+    self.ye=self.y*yefrac
+    self.y_units='Vega'
+
+  def demagnituded(self):
+    demlc=self.copy()
+    demlc.demagnitude()
+    return demlc
+
   # Flux phase diagrams!
 
   def flux_phase_diagram(self,period,Ncycles_per_line=2):
-    phase_bins=round(period/self.binsize)*Ncycles_per_line
+    phase_bins=int(round(period/self.binsize)*Ncycles_per_line)
     even_data=self.evened_bins(period*Ncycles_per_line/phase_bins)
     length=even_data.get_length()
     length=(length//phase_bins)*phase_bins
@@ -840,7 +996,7 @@ class lightcurve(object):
   def phase_fold(self,period,phase_bins=100,standev_errors=False):
     if self.is_folded:
       wr.warn('Already folded!  Skipping!')
-    return None
+      return None
     self.folder=fo.linear_folder(self,period)
     self.folder.fold(phase_bins,standev_errors=standev_errors)
     self.x=self.folder.get_fx()
@@ -957,7 +1113,7 @@ class lightcurve(object):
     return divided_lc
 
   def mask(self,mask):
-    if len(mask)!=self.get_len():
+    if len(mask)!=self.get_length():
       raise dat.DataError('Mask of different length to lightcurve!')
     self.x=self.x[mask]
     self.y=self.y[mask]
@@ -968,12 +1124,38 @@ class lightcurve(object):
     masked_lc.mask(mask)
     return masked_lc
 
-  def clip_percentile_range(self,lower,upper):
+  # making selections on flux
+
+  def flux_cut_between(self,lower,upper):
     if lower>upper:
-      raise dat.DataError('Upper percentile must >= lower percentile!')
+      raise dat.DataError('Lower flux cut must >= upper flux cut!')
+    self.mask(np.logical_and(self.y>=lower,self.y<upper))
+
+  def flux_cutted_between(self,lower,upper):
+    cut_lc=self.copy()
+    cut_lc.flux_cut_between(lower,upper)
+    return cut_lc
+
+  def flux_cut_above(self,limit):
+    self.flux_cut_between(limit,np.inf)
+
+  def flux_cutted_above(self,limit):
+    cut_lc=self.copy()
+    cut_lc.flux_cut_above(limit)
+    return cut_lc
+
+  def flux_cut_below(self,limit):
+    self.flux_cut_between(-np.inf,limit)
+
+  def flux_cutted_below(self,limit):
+    cut_lc=self.copy()
+    cut_lc.flux_cut_below(limit)
+    return cut_lc
+
+  def clip_percentile_range(self,lower,upper):
     u_bound=np.percentile(self.y,upper)
     l_bound=np.percentile(self.y,lower)
-    self.mask(np.logical_and(self.y>=l_bound,self.y<u_bound))
+    self.flux_cut_between(self,l_bound,u_bound)
 
   def clipped_percentile_range(self,lower,upper):
     clipped_lc=self.copy()
@@ -1063,7 +1245,7 @@ def get_tess_lc(filename):
       wr.filterwarnings('ignore')
       simbadlist=Simbad.query_region(objcoord, radius='0d1m0s')
     oname=str(simbadlist[0]['MAIN_ID'])[2:-1]
-  except (KeyError,TypeError,AssertionError):
+  except (KeyError,TypeError,AssertionError,rx.ConnectionError):
     try:
       oname=f[1].header['OBJECT']
     except KeyError:
