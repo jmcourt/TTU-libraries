@@ -138,3 +138,37 @@ class TwoD_Dataframe(object):
         write_string+=str(val)+','
       f.write(write_string[:-1]+'\n')
     f.close()
+
+def rebin(bin_factor,x,y,ye=None):
+  x=np.array(x)
+  y=np.array(y)
+  if type(ye)=='NoneType':
+    ye=np.zeros(len(x))
+  else:
+    ye=np.array(ye)
+  bin_factor=int(bin_factor)
+  if bin_factor>len(x):
+    raise DataError('Bin factor greater than number of datapoints!')
+  x_overshoot=len(x)%bin_factor
+  masked_xs=[0]*bin_factor
+  masked_ys=[0]*bin_factor
+  masked_yes=[0]*bin_factor
+  if x_overshoot>0:   # cropping out data which would fall outside of any of the new bins
+    x=x[:-x_overshoot]
+    y=y[:-x_overshoot]
+    ye=ye[:-x_overshoot]
+  index_range=np.array(range(len(x)))
+  for i in range(bin_factor):
+    mask=index_range%bin_factor==i
+    masked_xs[i]=x[mask]
+    masked_ys[i]=y[mask]
+    masked_yes[i]=ye[mask]
+  xmatrix=np.vstack(masked_xs)
+  ymatrix=np.vstack(masked_ys)
+  yematrix=np.vstack(masked_yes)
+  binned_x=np.mean(xmatrix,axis=0)
+  binned_y=np.mean(ymatrix,axis=0)
+  binned_ye=np.sqrt(np.sum(yematrix**2,axis=0))/bin_factor
+
+  return binned_x,binned_y,binned_ye
+

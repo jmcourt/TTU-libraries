@@ -524,6 +524,14 @@ class lightcurve(object):
         ft_e+=window.ft_e**2
     self.ft=ft/total
     self.ft_e=np.sqrt(ft_e)/total
+
+  def bin_fourier(self,bin_factor):
+    if 'ft' not in self.__dict__:
+      raise dat.Data_error('No Fourier spectrum to rebin!')
+    newft_freqs,newft,newft_e=dat.rebin(bin_factor,self.ft_freqs,self.ft,ye=self.ft_e)
+    self.ft=newft
+    self.ft_freqs=newft_freqs
+    self.ft_e=newft_e
     
   def plot_fourier(self,output=None,log=False,logx=False,**kwargs):
     if 'ft' not in self.__dict__: self.fourier('leahy')
@@ -561,7 +569,7 @@ class lightcurve(object):
     f_range=np.arange(min_f,max_f,resolution)
     self.lomb_scargle(f_range)
 
-  def plot_lomb_scargle(self,log=False,output=None,block=False,**kwargs):
+  def plot_lomb_scargle(self,nupnu=False,log=False,logx=False,output=None,block=False,**kwargs):
     if not ('ls' in self.__dict__): self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Lomb-Scargle Periodogram')
@@ -884,7 +892,7 @@ class lightcurve(object):
       newby=evener_b_spline(newx)
       newbye=errorer_b_spline(newx)
 
-    mask=np.ones(len(newx))
+    mask=np.ones(len(newx),dtype=bool)
     for gap in gaps:
       gapmask=np.logical_or(newx<gap[0],newx>gap[1])
       mask=np.logical_and(mask,gapmask)
@@ -1203,10 +1211,25 @@ class tess_lightcurve(lightcurve):
     self.t_units='BJD'
     self.y_units='e/s'
 
-  def get_title(self): # so that the sector is loaded onto plot titles by default
-    if self.sector=='':
-      return self.objname
-    return self.objname+' (Sector '+self.sector+')'
+class kepler_lightcurve(lightcurve):
+  def unpack_metadata(self):
+    self.objname=self.meta['name']
+    self.mission=self.meta['mission']
+    self.binsize=self.meta['binsize']
+    self.acceptable_gap=100000
+    abx=np.array(self.meta['bx'])
+    with wr.catch_warnings():
+      wr.filterwarnings('ignore',message='invalid value encountered in less_equal')
+      wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
+      if not self.is_empty():
+         bgmask=np.logical_and(abx>=self.get_start_time(),abx<=self.get_end_time())
+      else:
+         bgmask=[]   # Should still be able to initialise a Kepler lightcurve of length 0.  This matters for dynamical spectra
+    self.bx=abx[bgmask].astype(float)  # clipping bg lightcurve to same length as main lc, useful after calving
+    self.b=np.array(self.meta['b'])[bgmask].astype(float)
+    self.be=np.array(self.meta['be'])[bgmask].astype(float)
+    self.t_units='BJD'
+    self.y_units='e/s'
 
 class rxte_lightcurve(lightcurve):
   def unpack_metadata(self):
@@ -1275,6 +1298,37 @@ def get_tess_lc(filename):
   imeta['binsize']=f[1].header['TIMEDEL']
   f.close()
   return tess_lightcurve(x,y,ye,meta=imeta)
+
+def get_kepler_lc(filename):
+  imeta={}
+  f=fits.open(filename)
+  if f[1].header['TELESCOP'][:6].upper()!='KEPLER':
+    raise dat.DataError('FITS file does not appear to be from Kepler')
+  if f[1].header['EXTNAME'].upper()!='LIGHTCURVE':
+    raise dat.DataError('Kepler FITS file does not appear to be a lightcurve')
+  try:
+    oname=f[1].header['OBJECT']
+  except KeyError:
+    oname='UNKNOWN'
+    wr.warn('Could not find Object Name')
+  try:
+    imeta['kepler_id']=f[1].header['KEPLERID']
+  except:
+    imeta['kepler_id']='UNKNOWN'
+  imeta['name']=oname
+  imeta['mission']='TESS'
+  lcdat=f[1].data
+  q=lcdat['SAP_QUALITY']
+  mask=q==0
+  x=lcdat['TIME'][mask]
+  y=lcdat['SAP_FLUX'][mask]
+  ye=lcdat['SAP_FLUX_ERR'][mask]
+  imeta['bx']=lcdat['TIME'][mask]
+  imeta['b']=lcdat['SAP_BKG'][mask]
+  imeta['be']=lcdat['SAP_BKG_ERR'][mask]
+  imeta['binsize']=f[1].header['TIMEDEL']
+  f.close()
+  return kepler_lightcurve(x,y,ye,meta=imeta)
 
 ###############################################################################
 
