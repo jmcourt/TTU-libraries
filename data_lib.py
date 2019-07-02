@@ -142,10 +142,9 @@ class TwoD_Dataframe(object):
 def rebin(bin_factor,x,y,ye=None):
   x=np.array(x)
   y=np.array(y)
-  if type(ye)=='NoneType':
-    ye=np.zeros(len(x))
-  else:
-    ye=np.array(ye)
+  if type(ye)==type(None):
+    ye=[0]*len(x)
+  ye=np.array(ye)
   bin_factor=int(bin_factor)
   if bin_factor>len(x):
     raise DataError('Bin factor greater than number of datapoints!')
@@ -169,6 +168,44 @@ def rebin(bin_factor,x,y,ye=None):
   binned_x=np.mean(xmatrix,axis=0)
   binned_y=np.mean(ymatrix,axis=0)
   binned_ye=np.sqrt(np.sum(yematrix**2,axis=0))/bin_factor
+
+  return binned_x,binned_y,binned_ye
+
+def log_rebin(log_res,x,y,ye=None):
+  # shamelessly repurposed from pan_lib
+  x=np.array(x)
+  y=np.array(y)
+  if type(ye)==type(None):
+    ye=[0]*len(x)
+  ye=np.array(ye)
+  lin_res=x[1]-x[0]
+  hinge=(lin_res*10**log_res)/((10**log_res)-1)                      # Find the 'hinge' point at which to switch between linear and logarithmic binning
+  lbin=np.log10(x[0])
+  xb =10**(np.arange(lbin,np.log10(x[-1]),log_res))                       # Setting up arrays to append binned values into
+  yb =np.zeros(len(xb))
+  yeb=np.zeros(len(xb))
+
+  hingel=sum((xb)<=hinge)                                                # Getting the ID of the hinge-point in the log
+
+  xbl=len(xb)
+
+  for i in range(hingel,xbl):
+
+    lowid=int(((10**((i*log_res)+lbin))-x[0])/lin_res)               # Calculate the ID of the lowest linear bin that corresponds to this log bin
+    uppid=int(((10**(((i+1)*log_res)+lbin))-x[0])/lin_res)           # Calculate the ID of the highest linear bin that corresponds to this log bin
+    if uppid>lowid:
+      yb[i]=np.mean(y[lowid:uppid])
+      yeb[i]=(np.sqrt(sum(np.array(ye[lowid:uppid])**2)))/int(uppid-lowid)
+    else:
+      yb[i]=0                                                          # If no data found, error=power=0
+      yeb[i]=0
+
+  mask=x<hinge
+  lmask=xb>hinge
+
+  binned_x=np.append(x[mask],xb[lmask])
+  binned_y=np.append(y[mask],yb[lmask])
+  binned_ye=np.append(ye[mask],yeb[lmask])
 
   return binned_x,binned_y,binned_ye
 

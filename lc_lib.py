@@ -5,6 +5,7 @@ import data_lib as dat
 import file_lib as fi
 import fold_lib as fo
 import freq_lib as frq
+import func_lib as func
 from   matplotlib import gridspec as gs
 from   matplotlib import pyplot as pl
 import numpy as np
@@ -66,6 +67,7 @@ class lightcurve(object):
     self.ft_norm='N/A'
     self.unpack_metadata()
     self.is_folded=False
+    self.data_evened=False
     self.x_axis_is_phase=False
     self.period=0
 
@@ -461,7 +463,7 @@ class lightcurve(object):
     return 0.5/self.binsize
 
   def fourier(self,norm='leahy',normname='custom',squelch=False,const=2):
-    if not squelch:
+    if not squelch and not self.data_evened:
       wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
     try:
       norm=float(norm)
@@ -493,7 +495,7 @@ class lightcurve(object):
     self.ft_freqs=freqs
 
   def windowed_fourier(self,window_size,norm='leahy',normname='custom',const=2,squelch=False):
-    if not squelch:
+    if not squelch and not self.data_evened:
       wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
     npts=int(window_size/self.binsize)
     lognpoints=np.log2(npts)
@@ -525,15 +527,23 @@ class lightcurve(object):
     self.ft=ft/total
     self.ft_e=np.sqrt(ft_e)/total
 
-  def bin_fourier(self,bin_factor):
+  def rebin_fourier(self,bin_factor):
     if 'ft' not in self.__dict__:
-      raise dat.Data_error('No Fourier spectrum to rebin!')
+      raise dat.DataError('No Fourier spectrum to rebin!')
     newft_freqs,newft,newft_e=dat.rebin(bin_factor,self.ft_freqs,self.ft,ye=self.ft_e)
     self.ft=newft
     self.ft_freqs=newft_freqs
     self.ft_e=newft_e
+
+  def log_rebin_fourier(self,log_res):
+    if 'ft' not in self.__dict__:
+      raise dat.DataError('No Fourier spectrum to rebin!')
+    newft_freqs,newft,newft_e=dat.log_rebin(log_res,self.ft_freqs,self.ft,ye=self.ft_e)
+    self.ft=newft
+    self.ft_freqs=newft_freqs
+    self.ft_e=newft_e
     
-  def plot_fourier(self,output=None,log=False,logx=False,**kwargs):
+  def plot_fourier(self,output=None,log=False,logx=False,nupnu=False,**kwargs):
     if 'ft' not in self.__dict__: self.fourier('leahy')
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Fourier Spectrum')
@@ -541,7 +551,14 @@ class lightcurve(object):
       ax.semilogy()
     if logx:
       ax.semilogx()
-    ax.errorbar(self.ft_freqs,self.ft,yerr=self.ft_e,**kwargs)
+    if nupnu:
+      if self.ft_norm=='nupnu':
+        wr.warn('Stored Fourier spectrum is already nupnu!  Ignoring.')
+        ax.errorbar(self.ft_freqs,self.ft,yerr=self.ft_e,**kwargs)
+      else:
+        ax.errorbar(self.ft_freqs,self.ft_freqs*self.ft,yerr=self.ft_e*self.ft,**kwargs)
+    else:
+      ax.errorbar(self.ft_freqs,self.ft,yerr=self.ft_e,**kwargs)
     ax.set_ylabel('"'+self.ft_norm+'"-normalised power')
     ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
     fi.plot_save(output,**kwargs)
@@ -551,12 +568,13 @@ class lightcurve(object):
 
   # Some general L-S methods
 
-  def lomb_scargle(self,freqrange,norm='auto'):
+  def lomb_scargle(self,freqrange,norm='auto',nupnu=False):
 
     # Generalised L-S from Zechmeister & Kuerster, 2009, eq 5-15
 
     self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm)
     self.ls_freqs=np.array(freqrange)
+    self.ls_e=self.ls
 
   def auto_lomb_scargle(self,min_f=None,max_f=None,resolution=None,n0=1):
     # n0 is the oversampling ratio.  5 is reccommended by e.g. Schwarzenberg-Czerny 1996
@@ -569,17 +587,44 @@ class lightcurve(object):
     f_range=np.arange(min_f,max_f,resolution)
     self.lomb_scargle(f_range)
 
-  def plot_lomb_scargle(self,nupnu=False,log=False,logx=False,output=None,block=False,**kwargs):
+  def plot_lomb_scargle(self,log=False,logx=False,nupnu=False,output=None,block=False,errors=False,**kwargs):
     if not ('ls' in self.__dict__): self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Lomb-Scargle Periodogram')
     if log:
-      ax.semilogy(self.ls_freqs,self.ls,**kwargs)
+      ax.semilogy()
+    if logx:
+      ax.semilogx()
+    if errors:
+      wr.warn('LOMB SCARGLE ERRORS ARE INVALID!')
+      if nupnu:
+        ax.errorbar(self.ls_freqs,self.ls*self.ls_freqs,yerr=self.ls_e*self.ls_freqs,**kwargs)
+      else:
+        ax.errorbar(self.ls_freqs,self.ls,yerr=self.ls_e,**kwargs)
     else:
-      ax.plot(self.ls_freqs,self.ls,**kwargs)
+      if nupnu:
+        ax.plot(self.ls_freqs,self.ls*self.ls_freqs,**kwargs)
+      else:
+        ax.plot(self.ls_freqs,self.ls,**kwargs)
     ax.set_ylabel('Lomb-Scargle power')
     ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
     fi.plot_save(output,block)
+
+  def rebin_lomb_scargle(self,bin_factor):
+    if 'ls' not in self.__dict__:
+      raise dat.DataError('No Lomb-Scargle spectrum to rebin!')
+    newls_freqs,newls,newls_e=dat.rebin(bin_factor,self.ls_freqs,self.ls,ye=self.ls_e)
+    self.ls=newls
+    self.ls_e=newls_e
+    self.ls_freqs=newls_freqs
+
+  def log_rebin_lomb_scargle(self,log_res):
+    if 'ls' not in self.__dict__:
+      raise dat.DataError('No Lomb-Scargle spectrum to rebin!')
+    newls_freqs,newls,newls_e=dat.log_rebin(log_res,self.ls_freqs,self.ls,ye=self.ls_e)
+    self.ls=newls
+    self.ls_e=newls_e
+    self.ls_freqs=newls_freqs
 
   def get_freq_resolution(self): # get the minimum frequency resolution for LS or Fourier without oversampling
     minf=1/self.get_xrange()
@@ -593,13 +638,13 @@ class lightcurve(object):
     newlc.lomb_scargle(np.arange(f_min,f_max,self.get_freq_resolution()))
     newlc.plot_lomb_scargle()
     init_vals=(np.max(newlc.ls_freqs),f_min+frange/2,frange/2,0)
-    fit_results=optm.curve_fit(frq.lorentzian,newlc.ls_freqs,newlc.ls,init_vals)
+    fit_results=optm.curve_fit(func.lorentzian,newlc.ls_freqs,newlc.ls,init_vals)
     if plot:
       pl.figure()
       ax=pl.gca()
       newlc.plot_lomb_scargle(output=ax)
       plotrange=np.arange(newlc.ls_freqs[0],newlc.ls_freqs[-1],(newlc.ls_freqs[-1]-newlc.ls_freqs[0])/100)
-      ax.plot(plotrange,frq.lorentzian(plotrange,*fit_results[0]),':k',**kwargs)
+      ax.plot(plotrange,func.lorentzian(plotrange,*fit_results[0]),':k',**kwargs)
       pl.show()
     return fit_results
 
@@ -907,6 +952,8 @@ class lightcurve(object):
       self.b=newby[mask]
       self.be=newbye[mask]
 
+    self.data_evened=True
+
   def spline_evened(self,binsize=None):
     evened_lc=self.copy()
     evened_lc.spline_even(binsize)
@@ -1067,7 +1114,7 @@ class lightcurve(object):
     try:
       with wr.catch_warnings():
         wr.simplefilter("ignore")
-        ests=optm.curve_fit(frq.gaussian,x,y,invals)
+        ests=optm.curve_fit(func.gaussian,x,y,invals)
     except RuntimeError:
       return estimate,error  # return a value if the parameter space becomes non-gaussian
     check0=np.abs(ests[0][0])>3*np.sqrt(np.abs(np.diag(ests[1])))[0]
