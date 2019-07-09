@@ -22,3 +22,13 @@ def broken_power_law(x,i1,i2,a,f):
   p1[x>f]=0
   p2[x<=f]=0
   return p1+p2
+
+def line(x,m,c):
+  return m*x+c
+
+def broken_line(x,m1,m2,c,f):
+  p1=line(x,m1,c)
+  p2=line(x,m2,(m1-m2)*f+c)
+  p1[x>f]=0
+  p2[x<=f]=0
+  return p1+p2
