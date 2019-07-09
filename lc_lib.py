@@ -568,15 +568,15 @@ class lightcurve(object):
 
   # Some general L-S methods
 
-  def lomb_scargle(self,freqrange,norm='auto',nupnu=False):
+  def lomb_scargle(self,freqrange,norm='auto',generalised=True):
 
     # Generalised L-S from Zechmeister & Kuerster, 2009, eq 5-15
 
-    self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm)
+    self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm,generalised=generalised)
     self.ls_freqs=np.array(freqrange)
     self.ls_e=self.ls
 
-  def auto_lomb_scargle(self,min_f=None,max_f=None,resolution=None,n0=1):
+  def auto_lomb_scargle(self,min_f=None,max_f=None,resolution=None,n0=1,norm='auto',generalised=True):
     # n0 is the oversampling ratio.  5 is reccommended by e.g. Schwarzenberg-Czerny 1996
     if min_f==None:
       min_f=1/self.get_xrange()
@@ -585,7 +585,7 @@ class lightcurve(object):
     if resolution==None:
       resolution=1/(n0*self.get_xrange())
     f_range=np.arange(min_f,max_f,resolution)
-    self.lomb_scargle(f_range)
+    self.lomb_scargle(f_range,norm=norm,generalised=generalised)
 
   def plot_lomb_scargle(self,log=False,logx=False,nupnu=False,output=None,block=False,errors=False,**kwargs):
     if not ('ls' in self.__dict__): self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])

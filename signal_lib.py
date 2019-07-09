@@ -1,4 +1,3 @@
-from matplotlib import pyplot as pl
 import numpy as np
 from numpy import fft
 from numpy import random as rn

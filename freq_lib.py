@@ -32,7 +32,7 @@ def lomb_scargle(t,y,ye,freqs,norm='auto',generalised=True):
 
     # Generalised L-S from Zechmeister & Kuerster, 2009, eq 5-15
     freqs=np.array(freqs)
-    w=np.ones(len(ye))
+    w=np.ones(len(ye))/len(ye)
     if generalised:
       w[ye<=0]=0
       w[ye>0]=(ye[ye>0]**-2)/(np.sum(ye[ye>0]**-2))
