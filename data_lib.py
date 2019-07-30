@@ -123,14 +123,14 @@ class TwoD_Dataframe(object):
     colourplot=ax.pcolor(self.x,self.y,self.z,cmap=cmap,norm=co.LogNorm(vmin=colour_min,vmax=colour_max))
     return colourplot
 
-  def lin_colour_plot(self,colour_min=None,colour_max=None,ax=None,cmap='viridis'):
+  def lin_colour_plot(self,colour_min=None,colour_max=None,ax=None,cmap='viridis',**kwargs):
     if colour_min==None:
       colour_min=self.get_min()
     if colour_max==None:
       colour_max=self.get_max()
     if ax==None:
       ax=pl.gca()
-    colourplot=ax.pcolor(self.x,self.y,self.z,cmap=cmap,norm=co.Normalize(vmin=colour_min,vmax=colour_max))
+    colourplot=ax.pcolor(self.x,self.y,self.z,cmap=cmap,norm=co.Normalize(vmin=colour_min,vmax=colour_max),**kwargs)
     return colourplot
 
   def dump(self,filename,header=True):

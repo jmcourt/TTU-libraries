@@ -1,18 +1,8 @@
 import data_lib as dat
 import file_lib as fi
-import fold_lib as fo
-import freq_lib as frq
-import func_lib as func
-from   matplotlib import gridspec as gs
 from   matplotlib import pyplot as pl
 import numpy as np
-import random as rn
 from   requests import exceptions as rx
-from   scipy import fftpack as fou
-from   scipy import interpolate as intp
-from   scipy import optimize as optm
-from   scipy import signal as sgnl
-import util_lib as util
 import warnings as wr
 
 # Optional packages
@@ -32,51 +22,45 @@ except:
   wr.warn('No Astroquery module found!  Unable to query Simbad for object identifiers!')
   imported_astroquery=False
 
-try:
-  from loess import loess_1d as loe
-  imported_loess=True
-except:
-  wr.warn('No Loess module found!  Unable to perform loess smoothing!')
-  imported_loess=False
-
 # ========= BASE STACKED IMAGE OBJECT! =====================================================================================================================
 
 class stacked_image(dat.DataSet):
 
-  # Basic initialisation of all lightcurves.  Gets x,y,ye and meta, and attempts to work out units
+  # Basic initialisation of all stacked images.  Gets times, images, x and y coord arrays and meta, and attempts to work out units
 
   @fi.mjit()
   def __init__(self,t,x,y,i,meta={}):
     ts=np.array(t).astype(float)
     ims=np.array(i).astype(int)
     #sort data by time
-    sorted_args=tx.argsort()
-    self.x=ts[sorted_args]
+    sorted_args=ts.argsort()
+    self.t=ts[sorted_args]
     self.i=ims[sorted_args]
+    self.x=x
+    self.y=y
     self.meta=meta
     self.unpack_metadata()
 
-  # Generic metadata unpacking.  Use this in inherting classes to do fancy stuff with extra data
-
-
-
   # Simple plotter
 
-  def quickplot(self,output=None,block=False,title=True,**kwargs):
-    xlab='Time '+self.t_unit_string()
+  def quickplot(self,output=None,block=False,cmap='viridis',title=True,**kwargs):
     ax=fi.filter_axes(output)
+    self.vertical_mean().lin_colour_plot(ax=ax,cmap=cmap,**kwargs)
+    ax.set_xlabel('RA (deg)')
+    ax.set_ylabel('Dec (deg)')
     if title:
-      ax.set_title(self.get_title()+' Quick Plot')
-    if errors:
-      ax.errorbar(x,y,yerr=ye,**kwargs)
-    else:
-      ax.plot(x,y,**kwargs)
-    ax.set_xlabel(xlab)
-    ax.set_ylabel('Rate '+self.y_unit_string())
+      ax.set_title(self.meta['name'])
     fi.plot_save(output,block)
 
   # Simple data processes
 
+  def vertical_sum(self):
+    sum_i=np.sum(self.i,axis=0)
+    return dat.TwoD_Dataframe(self.x,self.y,sum_i)
+
+  def vertical_mean(self):
+    sum_i=np.mean(self.i,axis=0)
+    return dat.TwoD_Dataframe(self.x,self.y,sum_i)
 
 # TESS Target Pixel File opener
 
@@ -120,13 +104,25 @@ def get_tess_tpf(filename):
   imeta['sector']=sname
   imeta['mission']='TESS'
   imgdat=f[1].data
+  imghead=f[1].header
   q=imgdat['QUALITY']
   mask=q==0
-  x=imgdat['TIME'][mask]
+  t=imgdat['TIME'][mask]
   i=imgdat['RAW_CNTS'][mask]
 
+  # WARNING!  RA and DEC treated as orthonormal, cartesian.  This approximation will be bad near the poles
+
+  x_scale=imghead['1CDLT4']
+  y_scale=imghead['2CDLT4']
+  x_0=imghead['1CRVL4']-(imghead['1CRPX4']*x_scale)
+  y_0=imghead['2CRVL4']-(imghead['2CRPX4']*x_scale)
+  xdim=int(imghead['TDIM7'].split(',')[0].split('(')[1])
+  ydim=int(imghead['TDIM7'].split(',')[1].split(')')[0])
+  x=np.arange(0,xdim,1,dtype=int)*x_scale+x_0
+  y=np.arange(0,ydim,1,dtype=int)*y_scale+y_0
+
   f.close()
-  return stacked_image(x,i,meta=imeta)
+  return stacked_image(t,x,y,i,meta=imeta)
 
 #  Wrap the astropy warning with the fits.open call to save adding this warning to eeeeevery loading routine.
 
