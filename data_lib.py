@@ -7,6 +7,25 @@ import warnings as wr
 class DataError(Exception):
   pass
 
+# a base class with a bunch of procedures common to lc and img datasets
+
+class DataSet(object):
+  def unpack_metadata(self):
+    if 'name' in self.meta.keys():
+      self.objname=self.meta['name']
+    else:
+      self.objname='unknown'
+    if 'mission' in self.meta.keys():
+      self.mission=self.meta['mission']
+    else:
+      self.mission='unknown'
+
+  def copy(self):
+    return copy.deepcopy(self)
+
+  def is_empty(self):
+    return self.get_length()==0
+
 class TwoD_Dataframe(object):
   def __init__(self,xvalues,yvalues,zvalues,meta={}):
     xlen=len(xvalues)

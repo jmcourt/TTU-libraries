@@ -1,4 +1,3 @@
-import copy
 import data_lib as dat
 import file_lib as fi
 import fold_lib as fo
@@ -42,7 +41,7 @@ except:
 
 # ========= BASE LIGHTCURVE OBJECT! =====================================================================================================================
 
-class lightcurve(object):
+class lightcurve(dat.DataSet):
 
   # Basic initialisation of all lightcurves.  Gets x,y,ye and meta, and attempts to work out units
 
@@ -79,28 +78,6 @@ class lightcurve(object):
     self.data_evened=False
     self.x_axis_is_phase=False
     self.period=0
-
-  # Generic metadata unpacking.  Use this in inherting classes to do fancy stuff with extra data
-
-  def unpack_metadata(self):
-    if 'name' in self.meta.keys():
-      self.objname=self.meta['name']
-    else:
-      self.objname='unknown'
-    if 'mission' in self.meta.keys():
-      self.mission=self.meta['mission']
-    else:
-      self.mission='unknown'
-
-  # Copy self
-
-  def copy(self):
-    return copy.deepcopy(self)
-
-  # Simple data checks
-
-  def is_empty(self):
-    return self.get_length()==0
 
   # Basic getters & setters
 
