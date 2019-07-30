@@ -1,5 +1,3 @@
-import astropy.coordinates as coord
-from   astropy.io import fits
 import copy
 import data_lib as dat
 import file_lib as fi
@@ -15,20 +13,31 @@ from   scipy import fftpack as fou
 from   scipy import interpolate as intp
 from   scipy import optimize as optm
 from   scipy import signal as sgnl
+import util_lib as util
 import warnings as wr
 
 # Optional packages
 
 try:
+  import astropy.coordinates as coord
+  from   astropy.io import fits
+  imported_astropy=True
+except ImportError:
+  wr.warn('No Astropy module found!  Unable to handle FITS files!')
+  imported_astropy=False
+
+try:
   from astroquery.simbad import Simbad
   imported_astroquery=True
 except:
+  wr.warn('No Astroquery module found!  Unable to query Simbad for object identifiers!')
   imported_astroquery=False
 
 try:
   from loess import loess_1d as loe
   imported_loess=True
 except:
+  wr.warn('No Loess module found!  Unable to perform loess smoothing!')
   imported_loess=False
 
 # ========= BASE LIGHTCURVE OBJECT! =====================================================================================================================
@@ -294,7 +303,7 @@ class lightcurve(object):
 
   # Creates a scatter plot of an unfolded lightcurve where the x-coord of each point is its phase
 
-  def plot_folded_scatterplot(self,period,output=None,block=False,**kwargs):
+  def plot_folded_scatterplot(self,period,output=None,block=False,clip_percentile=100,**kwargs):
     if self.is_folded:
       wr.warn("Can't fold that which is already folded!")
     else:
@@ -304,6 +313,7 @@ class lightcurve(object):
       ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/self.get_length(),0.2),color='k',**kwargs)
       ax.set_xlabel('Phase')
       ax.set_ylabel('Rate '+self.y_unit_string())
+      ax.set_ylim(np.percentile(self.y,100-clip_percentile),np.percentile(self.y,clip_percentile))
       fi.plot_save(output,block)
 
   def plot_varifolded_scatterplot(self,zero_list,output=None,block=False,**kwargs):
@@ -568,15 +578,19 @@ class lightcurve(object):
 
   # Some general L-S methods
 
-  def lomb_scargle(self,freqrange,norm='auto',generalised=True):
+  def lomb_scargle(self,freqrange,norm='auto',generalised=True,squelch=False):
 
     # Generalised L-S from Zechmeister & Kuerster, 2009, eq 5-15
 
+    if len(freqrange)>9999 and not squelch:
+      wr.warn(str(len(freqrange))+' frequency samples requested!  This could take a while.')
+      if not util.proceed():
+        return None
     self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm,generalised=generalised)
     self.ls_freqs=np.array(freqrange)
     self.ls_e=self.ls
 
-  def auto_lomb_scargle(self,min_f=None,max_f=None,resolution=None,n0=1,norm='auto',generalised=True):
+  def auto_lomb_scargle(self,min_f=None,max_f=None,resolution=None,n0=1,norm='auto',generalised=True,squelch=False):
     # n0 is the oversampling ratio.  5 is reccommended by e.g. Schwarzenberg-Czerny 1996
     if min_f==None:
       min_f=1/self.get_xrange()
@@ -585,7 +599,7 @@ class lightcurve(object):
     if resolution==None:
       resolution=1/(n0*self.get_xrange())
     f_range=np.arange(min_f,max_f,resolution)
-    self.lomb_scargle(f_range,norm=norm,generalised=generalised)
+    self.lomb_scargle(f_range,norm=norm,generalised=generalised,squelch=squelch)
 
   def plot_lomb_scargle(self,log=False,logx=False,nupnu=False,output=None,block=False,errors=False,**kwargs):
     if not ('ls' in self.__dict__): self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
@@ -1298,8 +1312,10 @@ class rxte_lightcurve(lightcurve):
 # ======= define some fetchers for making instrument-specific lightcurves =======================================================================
 
 def get_tess_lc(filename):
+  if not imported_astropy:
+    raise ImportError('No Astropy module found!  Cannot open fits files!')
   imeta={}
-  f=fits.open(filename)
+  f=safe_open_fits(filename)
   if f[1].header['TELESCOP'][:4].upper()!='TESS':
     raise dat.DataError('FITS file does not appear to be from TESS')
   if f[1].header['EXTNAME'].upper()!='LIGHTCURVE':
@@ -1307,6 +1323,7 @@ def get_tess_lc(filename):
 
   try:
     assert imported_astroquery
+    assert imported_astropy
     radesys=f[0].header['RADESYS'].lower()
     objra=str(f[0].header['RA_OBJ'])+' '
     objdec=str(f[0].header['DEC_OBJ'])
@@ -1348,7 +1365,7 @@ def get_tess_lc(filename):
 
 def get_kepler_lc(filename):
   imeta={}
-  f=fits.open(filename)
+  f=safe_open_fits(filename)
   if f[1].header['TELESCOP'][:6].upper()!='KEPLER':
     raise dat.DataError('FITS file does not appear to be from Kepler')
   if f[1].header['EXTNAME'].upper()!='LIGHTCURVE':
@@ -1381,7 +1398,7 @@ def get_kepler_lc(filename):
 
 def get_rxte_lc_from_gx(filename,binsize,min_chan=0,max_chan=255):
   imeta={}
-  f=fits.open(filename)
+  f=safe_open_fits(filename)
   if f[1].header['TELESCOP'][:3].upper()!='XTE':
     raise dat.DataError('FITS file does not appear to be from RXTE')
   if f[1].header['DATAMODE']!='GoodXenon_2s':
@@ -1477,7 +1494,7 @@ def get_lc_from_arrays(x,y,ye=[]):
 ##############################################################################
 
 def get_lc_from_xronos(filename): # convert a xronos output, or similar non-instrumental fits, to a lc object
-  f=fits.open(filename)
+  f=safe_open_fits(filename)
   imeta={}
   header=f[1].header
   imeta['t_units']=header['TUNIT1']
@@ -1613,3 +1630,12 @@ def add_lcs(lc_list):
       raise TypeError('Element '+str(i)+' in iterable passed to lc_list is not lc-like!')
     base_lc.add_data(addon_lc)
   return base_lc
+
+# Utility functions:
+
+#  Wrap the astropy warning with the fits.open call to save adding this warning to eeeeevery loading routine.
+
+def safe_open_fits(filename):
+  if not imported_astropy:
+    raise ImportError('No Astropy module found!  Cannot open fits files!')
+  return fits.open(filename)
