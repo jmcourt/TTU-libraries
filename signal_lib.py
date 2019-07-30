@@ -1,6 +1,8 @@
 import numpy as np
-from numpy import fft
 from numpy import random as rn
+from scipy import fftpack as fou
+
+from matplotlib import pyplot as pl
 
 def red_noise(index,maxf,nf=100):
   # Red-Noise Lightcurve generator!  From Timmer & Konig 1995
@@ -24,9 +26,15 @@ def red_noise(index,maxf,nf=100):
     conjpart=np.conj(amps[1:][::-1])
   amps=np.append(amps,conjpart)
   nyquist=freqs[len(freqs)-1]
+  pl.figure()
+  pl.loglog(freqs,np.abs(amps**2)[:len(freqs)])
+  pl.show(block=False)
   sample_rate=1/(2*nyquist)
-  y=np.real(fft.ifft(amps))
+  y=np.real(fou.ifft(amps))
   # ^ Real component should be 0, but machine errors mean its usually
   # around the 1 in 10^15 mark, so we can chuck it away
   x=np.arange(0,sample_rate*len(y),sample_rate)
   return x,y
+
+def white_noise(maxf,nf=100):
+  return red_noise(1,maxf,nf)
