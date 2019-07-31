@@ -178,6 +178,10 @@ class lightcurve(dat.DataSet):
     self.multiply_gtis(constant)
     if 'b' in self.__dict__:
       self.bx=self.bx*constant
+    if 'ft_freqs' in self.__dict__:
+      self.ft_freqs=self.ft_freqs/constant
+    if 'ls_freqs' in self.__dict__:
+      self.ls_freqs=self.ls_freqs/constant
 
   def multiplied_time(self,constant):
     multiplied_lc=self.copy()
@@ -193,10 +197,10 @@ class lightcurve(dat.DataSet):
     self.t_units='days'
 
   def converted_days_to_s(self):
-    return self.multiplied_time(86400)
+    return self.copy().convert_days_to_s()
 
   def converted_s_to_days(self):
-    return self.multiplied_time(1./86400.)
+    return self.copy().convert_s_to_days()
 
   def shift_gtis(self,shift):
     pass    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
@@ -578,6 +582,11 @@ class lightcurve(dat.DataSet):
     f_range=np.arange(min_f,max_f,resolution)
     self.lomb_scargle(f_range,norm=norm,generalised=generalised,squelch=squelch)
 
+  def show_lomb_scargle_limits(self):
+    print('Min Frequency: '+str(1/self.get_xrange()))
+    print('Max Frequency: '+str(self.get_nyquist()))
+    print('Resolution   : '+str(1/(self.get_xrange())))
+
   def plot_lomb_scargle(self,log=False,logx=False,nupnu=False,output=None,block=False,errors=False,**kwargs):
     if not ('ls' in self.__dict__): self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
     ax=fi.filter_axes(output)
@@ -639,7 +648,7 @@ class lightcurve(dat.DataSet):
       pl.show()
     return fit_results
 
-  def lomb_scargle_spectrogram(self,freqrange,binsize,bin_separation,ignore_gaps=True):
+  def lomb_scargle_spectrogram(self,freqrange,binsize,bin_separation,ignore_gaps=True,as_return=False,squelch=False):
     min_points=80
     progress=0
     starttime=self.get_start_time()
@@ -648,12 +657,14 @@ class lightcurve(dat.DataSet):
       raise ValueError('Bin width longer than data set!')
     lsnorm=(self.get_length()-1)/(2.0*numbins)
     dynamic_spectrum=np.zeros((numbins,len(freqrange)))
+    N_datapoints=[np.nan]*numbins
     data_gaps=self.get_data_gaps()
     for i in range(numbins):
-      new_progress=int(i/numbins*100)
-      if new_progress>progress:
-        print('Lomb_Scargle Periodogram: '+str(progress)+'% complete')
-        progress=new_progress
+      if not squelch:
+        new_progress=int(i/numbins*100)
+        if new_progress>progress:
+          print('Lomb_Scargle Periodogram: '+str(progress)+'% complete')
+          progress=new_progress
       calve_st=starttime+i*bin_separation
       calve_ed=calve_st+binsize
       if ignore_gaps:
@@ -663,12 +674,29 @@ class lightcurve(dat.DataSet):
       calved_lc.lomb_scargle(freqrange,norm=lsnorm)
       lomb_scargle_spec=calved_lc.ls
       dynamic_spectrum[i,:]=lomb_scargle_spec
+      N_datapoints[i]=calved_lc.get_length()
     dynamic_ls_spectrum         = dynamic_spectrum.T
     dynamic_ls_spectrum_tvalues = starttime+bin_separation*(np.arange(0,numbins,1.0))+binsize/2.0
     dynamic_ls_spectrum_fvalues = freqrange
     dmeta={'x_dimension':'Time','y_dimension':'Frequency','x_unit':self.t_units,'y_unit':self.y_units}
     dls_data=dat.TwoD_Dataframe(dynamic_ls_spectrum_tvalues,dynamic_ls_spectrum_fvalues,dynamic_ls_spectrum,meta=dmeta)
+    if as_return:
+      return dls_data,N_datapoints
     self.dynamic_ls_data=dls_data
+
+  def windowed_lomb_scargle(self,freqrange,window_size,ignore_gaps=True):
+    ls_array,ls_datapoints=self.lomb_scargle_spectrogram(freqrange,window_size,window_size,ignore_gaps=ignore_gaps,as_return=True,squelch=True)
+    data=ls_array.get_z()
+    data[np.isnan(data)]=0
+    ls_datapoints=np.array(ls_datapoints)
+    ls_datapoints[np.isnan(ls_datapoints)]=0 # turn NaNs into zeros to remove them from weighting
+    weighted_data=np.multiply(ls_datapoints,data)
+    weighted_errs=np.multiply(ls_datapoints,data**2)
+    sumN=np.sum(ls_datapoints)
+    print(np.sum(data))
+    self.ls=np.sum(weighted_data,axis=1)/sumN
+    self.ls_freqs=np.array(freqrange)
+    self.ls_e=np.sqrt(np.sum(weighted_errs,axis=1))/sumN
 
   def dump_lomb_scargle_spectrogram(self,filename,header=True):
     if 'dynamic_ls_data' not in self.__dict__:
