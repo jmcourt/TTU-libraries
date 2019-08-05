@@ -1469,7 +1469,7 @@ def get_rxte_lc_from_gx(filename,binsize,min_chan=0,max_chan=255):
 
 ###############################################################################
 
-def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=',',meta_sep=':'):
+def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=None,meta_sep=':'):
   f=open(filename,'r')
   imeta={}
   x=[]
