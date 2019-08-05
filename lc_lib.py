@@ -116,11 +116,11 @@ class lightcurve(dat.DataSet):
   # Get me a spline!
 
   def get_spline(self,kind='slinear',fill_value='extrapolate'):
-    spline=intp.interp1d(self.x,self.y,kind=kind,fill_value=fill_value)
+    spline=intp.interp1d(self.get_x(),self.get_y(),kind=kind,fill_value=fill_value)
     return spline
 
   def get_err_spline(self,kind='slinear',fill_value='extrapolate'):
-    spline=intp.interp1d(self.x,self.ye,kind=kind,fill_value=fill_value)
+    spline=intp.interp1d(self.get_x(),self.get_ye(),kind=kind,fill_value=fill_value)
     return spline
 
   def get_bg_spline(self,kind='slinear',fill_value='extrapolate'):
@@ -998,9 +998,12 @@ class lightcurve(dat.DataSet):
   # Eww yuck get rid of magnitude measurements
 
   def demagnitude(self):
-    yefrac=self.ye/self.y
-    self.y=(100**0.2)**-self.y
-    self.ye=self.y*yefrac
+    o_y=self.y
+    o_ye=self.ye
+    self.y=(100**0.2)**-o_y
+    nerr=self.y-((100**0.2)**-(o_y+o_ye))
+    perr=((100**0.2)**-(o_y-o_ye))-self.y
+    self.ye=(nerr*perr)**0.5
     self.y_units='Vega'
 
   def demagnituded(self):
