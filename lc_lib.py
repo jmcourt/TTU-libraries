@@ -133,17 +133,17 @@ class lightcurve(dat.DataSet):
 
   # Dump contents to a csv
 
-  def dump(self,filename):
+  def dump(self,filename,data_sep=' ',meta_sep=':'):
     k=list(self.meta.keys())
     k.sort()
     f=open(filename,'w')
     f.write('META_DATA\n')
     for key in k:
       if type(self.meta[key]) in (str,int,float):
-        f.write(key+':'+str(self.meta[key])+'\n')
+        f.write(key+meta_sep+str(self.meta[key])+'\n')
     f.write('SCIENCE_DATA\n')
     for i in range(self.get_length()):
-      f.write(str(self.x[i])+','+str(self.y[i])+','+str(self.ye[i])+'\n')
+      f.write(str(self.x[i])+data_sep+str(self.y[i])+data_sep+str(self.ye[i])+'\n')
     f.close()
 
   # Play with time axis
@@ -559,7 +559,7 @@ class lightcurve(dat.DataSet):
 
   # Some general L-S methods
 
-  def lomb_scargle(self,freqrange,norm='auto',generalised=True,squelch=False):
+  def lomb_scargle(self,freqrange,norm='auto',generalised=True,squelch=False,errors=False,bootstrapN=100):
 
     # Generalised L-S from Zechmeister & Kuerster, 2009, eq 5-15
 
@@ -569,9 +569,21 @@ class lightcurve(dat.DataSet):
         return None
     self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm,generalised=generalised)
     self.ls_freqs=np.array(freqrange)
-    self.ls_e=self.ls
+    if errors:
+      errgrid=np.zeros((len(self.ls),bootstrapN))
+      for i in range(bootstrapN):
+        sample=self.copy()
+        fake_y=dat.gaussian_bootstrap(sample.get_y(),sample.get_ye())
+        sample.y=fake_y
+        sample.lomb_scargle(freqrange,norm=norm,generalised=generalised,squelch=True,errors=False)
+        errgrid[:,i]=sample.ls
+      self.ls_e=np.std(errgrid,axis=1)
+      print(len(self.ls_e))
+      print(len(self.ls))
+    else:
+      self.ls_e=self.ls*0
 
-  def auto_lomb_scargle(self,min_f=None,max_f=None,resolution=None,n0=1,norm='auto',generalised=True,squelch=False):
+  def auto_lomb_scargle(self,min_f=None,max_f=None,resolution=None,n0=1,norm='auto',generalised=True,squelch=False,errors=False):
     # n0 is the oversampling ratio.  5 is reccommended by e.g. Schwarzenberg-Czerny 1996
     if min_f==None:
       min_f=1/self.get_xrange()
@@ -580,34 +592,40 @@ class lightcurve(dat.DataSet):
     if resolution==None:
       resolution=1/(n0*self.get_xrange())
     f_range=np.arange(min_f,max_f,resolution)
-    self.lomb_scargle(f_range,norm=norm,generalised=generalised,squelch=squelch)
+    self.lomb_scargle(f_range,norm=norm,generalised=generalised,squelch=squelch,errors=errors)
 
   def show_lomb_scargle_limits(self):
     print('Min Frequency: '+str(1/self.get_xrange()))
     print('Max Frequency: '+str(self.get_nyquist()))
     print('Resolution   : '+str(1/(self.get_xrange())))
 
-  def plot_lomb_scargle(self,log=False,logx=False,nupnu=False,output=None,block=False,errors=False,**kwargs):
+  def plot_lomb_scargle(self,log=False,logx=False,nupnu=False,output=None,as_period=False,block=False,errors=False,**kwargs):
     if not ('ls' in self.__dict__): self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Lomb-Scargle Periodogram')
+    if as_period:
+      x=1/self.ls_freqs
+    else:
+      x=self.ls_freqs
     if log:
       ax.semilogy()
     if logx:
       ax.semilogx()
     if errors:
-      wr.warn('LOMB SCARGLE ERRORS ARE INVALID!')
       if nupnu:
-        ax.errorbar(self.ls_freqs,self.ls*self.ls_freqs,yerr=self.ls_e*self.ls_freqs,**kwargs)
+        ax.errorbar(x,self.ls*self.ls_freqs,yerr=self.ls_e*self.ls_freqs,**kwargs)
       else:
-        ax.errorbar(self.ls_freqs,self.ls,yerr=self.ls_e,**kwargs)
+        ax.errorbar(x,self.ls,yerr=self.ls_e,**kwargs)
     else:
       if nupnu:
-        ax.plot(self.ls_freqs,self.ls*self.ls_freqs,**kwargs)
+        ax.plot(x,self.ls*self.ls_freqs,**kwargs)
       else:
-        ax.plot(self.ls_freqs,self.ls,**kwargs)
+        ax.plot(x,self.ls,**kwargs)
     ax.set_ylabel('Lomb-Scargle power')
-    ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
+    if as_period:
+      ax.set_xlabel('Period ('+self.t_units+')')
+    else:
+      ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
     fi.plot_save(output,block)
 
   def rebin_lomb_scargle(self,bin_factor):
@@ -693,7 +711,6 @@ class lightcurve(dat.DataSet):
     weighted_data=np.multiply(ls_datapoints,data)
     weighted_errs=np.multiply(ls_datapoints,data**2)
     sumN=np.sum(ls_datapoints)
-    print(np.sum(data))
     self.ls=np.sum(weighted_data,axis=1)/sumN
     self.ls_freqs=np.array(freqrange)
     self.ls_e=np.sqrt(np.sum(weighted_errs,axis=1))/sumN
@@ -1460,7 +1477,7 @@ def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=',',meta_sep=':'):
   ye=[]
   mxind=max(x_ind,y_ind,e_ind)
   for line in f:
-    if meta_sep in line:
+    if len(line.split(meta_sep))>1:
       l=line.split(meta_sep)
       if len(l)!=2:
         continue
@@ -1473,7 +1490,7 @@ def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=',',meta_sep=':'):
       except:
         pass
       imeta[mkey]=mval
-    elif data_sep in line:
+    elif len(line.split(data_sep))>1:
       l=line.split(data_sep)
       if len(l)<=mxind:
         continue

@@ -2,6 +2,7 @@ import copy
 from matplotlib import colors as co
 from matplotlib import pyplot as pl
 import numpy as np
+from numpy import random as rn
 import warnings as wr
 
 class DataError(Exception):
@@ -228,3 +229,8 @@ def log_rebin(log_res,x,y,ye=None):
 
   return binned_x,binned_y,binned_ye
 
+# --------------- Bootstrapping methods ------------------
+
+def gaussian_bootstrap(y,ye):
+  assert len(y)==len(ye)
+  return rn.normal(loc=y,scale=ye)
