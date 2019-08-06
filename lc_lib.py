@@ -991,9 +991,27 @@ class lightcurve(dat.DataSet):
     self.data_evened=True
 
   def spline_evened(self,binsize=None):
-    evened_lc=self.copy()
-    evened_lc.spline_even(binsize)
-    return evened_lc
+    return self.copy().spline_even(binsize)
+
+  # Rebinning algorithms.  How was this not already a thing!?
+
+  def rebin(self,time):
+    newx,newy,newye=dat.rebin(time,self.get_x(),self.get_y(),ye=self.get_ye())
+    self.x=newx
+    self.y=newy
+    self.ye=newye
+
+  def rebinned(self,time):
+    return self.copy().rebin(time)
+
+  def rebin_by_factor(self,factor):
+    newx,newy,newye=dat.rebin_by_factor(factor,self.get_x(),self.get_y(),ye=self.get_ye())
+    self.x=newx
+    self.y=newy
+    self.ye=newye
+
+  def rebinned_by_factor(self,factor):
+    return self.copy().rebin_by_factor(factor)
 
   # Eww yuck get rid of magnitude measurements
 
@@ -1007,9 +1025,7 @@ class lightcurve(dat.DataSet):
     self.y_units='Vega'
 
   def demagnituded(self):
-    demlc=self.copy()
-    demlc.demagnitude()
-    return demlc
+    return self.copy().demagnitude()
 
   # Flux phase diagrams!
 

@@ -159,7 +159,41 @@ class TwoD_Dataframe(object):
       f.write(write_string[:-1]+'\n')
     f.close()
 
-def rebin(bin_factor,x,y,ye=None):
+def rebin(binsize,x,y,ye=None):
+
+  # Shameless ripoff from pan_lib
+
+  binlx=binsize*np.floor(x[0]/binsize)                                   # Initialising 'bin lowest x', or the lowest x value of the current bin
+  binct=0.0                                                              # Initialising 'bin count', or number of values sorted into the current bin
+
+  xb=[x[0]]                                                              # Setting up arrays to append binned values into
+  yb=[0]   
+  yeb=[0]
+
+  for xid in range(len(x)):
+
+    if x[xid]-binlx < binsize:                                          ## If the difference between the current x and bin start x is less than bin width:
+
+      binct+=1
+      yb[-1]=yb[-1]+y[xid]                                                  #  Add y to current bin
+      yeb[-1]=yeb[-1]+(ye[xid]**2)                                          #  Add y error in quadrature to current bin
+ 
+    else:                                                               ## Otherwise:
+      while binlx+binsize<x[xid]:
+        binlx+=binsize                                                      #  Create new bin with minimum x equal to current x
+      xb.append(binlx)                                                      #  Append next x value into new array element
+      yb[-1]=yb[-1]/binct                                                   #  Divide y in previous bin by bincount to get the average
+      yeb[-1]=(np.sqrt(yeb[-1]))/binct                                      #  Sqrt error and divide by bincount
+      yb.append(y[xid])                                                     #  Append current y value into new array element
+      yeb.append((ye[xid])**2)
+
+      binct=1                                                               #  Reset bin count to 1
+
+  yb[-1]=yb[-1]/binct                                                    ## Clean up final bin
+  yeb[-1]=(np.sqrt(yeb[-1]))/binct
+  return np.array(xb),np.array(yb),np.array(yeb)
+
+def rebin_by_factor(bin_factor,x,y,ye=None):
   x=np.array(x)
   y=np.array(y)
   if type(ye)==type(None):
