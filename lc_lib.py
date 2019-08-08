@@ -65,19 +65,19 @@ class lightcurve(dat.DataSet):
     self.set_acceptable_gap(meta['acceptable_gap']) # anything more than 1.5 times the median time separation is considered a data gap
     self.setup_meta(meta)
     if not self.has('t_units'):
-      self.t_units=''
+      self.set_t_units('')
     if not self.has('y_units'):
-      self.y_units=''
+      self.set_y_units('')
     if self.is_empty():
       self.set_binsize(0)
     else:
       self.set_binsize(min(self.delta_T()))
     self.ft_norm='N/A'
     self.unpack_metadata()
-    self.is_folded=False
-    self.data_evened=False
-    self.x_axis_is_phase=False
-    self.period=0
+    self.set_folded_flag(False)
+    self.set_data_even_flag(False)
+    self.set_xphase_flag(False)
+    self.set_period(0)
 
   # Basic getters & setters
 
@@ -102,7 +102,7 @@ class lightcurve(dat.DataSet):
     return self.be
   def set_bx(self,bx):
     self.bx=bx
-  def set_by(self,b):
+  def set_b(self,b):
     self.b=b
   def set_be(self,be):
     self.be=be
@@ -111,6 +111,20 @@ class lightcurve(dat.DataSet):
     return self.binsize
   def set_binsize(self,binsize):
     self.binsize=binsize
+  def get_period(self):
+    return self.period
+  def set_period(self,period):
+    self.period=float(period)
+
+  def get_t_units(self):
+    return self.t_units
+  def get_y_units(self):
+    return self.y_units
+
+  def set_t_units(self,unit):
+    self.t_units=str(unit)
+  def set_y_units(self,unit):
+    self.y_units=str(unit)
 
   def get_length(self):
     return len(self.get_x())
@@ -137,6 +151,69 @@ class lightcurve(dat.DataSet):
 
   def set_acceptable_gap(self,gap):
     self.acceptable_gap=gap
+
+  def set_phase_zeros(self,zeros):
+    self.phase_zeros=zeros
+  def get_phase_zeros(self):
+    return self.phase_zeros
+
+  def get_ft_freqs(self):
+    return self.ft_freqs
+  def get_ft(self):
+    return self.ft
+  def get_ft_e(self):
+    return self.ft_e
+  def get_ft_nupnu(self):
+    return self.get_ft()*self.get_ft_freqs()
+  def get_ft_nupnu_e(self):
+    return self.get_ft_e()*self.get_ft_freqs()
+  def get_ft_norm(self):
+    return self.ft_norm
+
+  def set_ft_freqs(self,ft_freqs):
+    self.ft_freqs=ft_freqs
+  def set_ft(self,ft):
+    self.ft=ft
+  def set_ft_e(self,ft_e):
+    self.ft_e=ft_e
+  def set_ft_norm(self,norm):
+    self.ft_norm=str(norm)
+
+  def get_ls_freqs(self):
+    return self.ls_freqs
+  def get_ls(self):
+    return self.ls
+  def get_ls_e(self):
+    return self.ls_e
+  def get_ls_nupnu(self):
+    return self.get_ls()*self.get_ls_freqs()
+  def get_ls_nupnu_e(self):
+    return self.get_ls_e()*self.get_ls_freqs()
+
+  def set_ls_freqs(self,ls_freqs):
+    self.ls_freqs=ls_freqs
+  def set_ls(self,ls):
+    self.ls=ls
+  def set_ls_e(self,ls_e):
+    self.ls_e=ls_e
+
+  # Flag checkers:
+
+  def is_folded(self):
+    return self.folded_flag
+  def set_folded_flag(self,boolean):
+    self.folded_flag=boolean
+
+  def is_data_evened(self):
+    return self.data_even_flag
+  def set_data_even_flag(self,boolean):
+    self.data_even_flag=boolean
+
+  def x_axis_is_phase(self):
+    return self.xphase_flag
+  def set_xphase_flag(self,boolean):
+    self.xphase_flag=boolean
+
 
   # Get me a spline!
 
@@ -182,9 +259,7 @@ class lightcurve(dat.DataSet):
     self.add_time(-start_time)
 
   def zeroed_time(self):
-    zeroed_lc=self.copy()
-    zeroed_lc.zero_time()
-    return zeroed_lc
+    return self.copy().zero_time()
 
   def add_time(self,time):
     self.set_x(self.get_x()+time)
@@ -193,9 +268,7 @@ class lightcurve(dat.DataSet):
       self.set_bx(self.get_bx()+time)
 
   def added_time(self,time):
-    added_lc=self.copy()
-    added_lc.add_time(time)
-    return added_lc
+    return self.copy().add_time(time)
 
   def multiply_time(self,constant):
     self.set_x(self.get_x()*constant)
@@ -204,22 +277,20 @@ class lightcurve(dat.DataSet):
     if self.has('b'):
       self.set_bx(self.get_bx()*constant)
     if self.has('ft_freqs'):
-      self.ft_freqs=self.ft_freqs/constant
+      self.set_ft_freqs(self.get_ft_freqs()/constant)
     if self.has('ls_freqs'):
-      self.ls_freqs=self.ls_freqs/constant
+      self.set_ls_freqs(self.get_ls_freqs()/constant)
 
   def multiplied_time(self,constant):
-    multiplied_lc=self.copy()
-    multiplied_lc.multiply_time(constant)
-    return multiplied_lc
+    return self.copy().multiply_time(constant)
 
   def convert_days_to_s(self):
     self.multiply_time(86400)
-    self.t_units='s'
+    self.set_t_units('s')
 
   def convert_s_to_days(self):
     self.multiply_time(1./86400.)
-    self.t_units='days'
+    self.set_t_units('days')
 
   def converted_days_to_s(self):
     return self.copy().convert_days_to_s()
@@ -228,15 +299,15 @@ class lightcurve(dat.DataSet):
     return self.copy().convert_s_to_days()
 
   def shift_gtis(self,shift):
-    pass    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
+    raise NotImplementedError    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
 
   def multiply_gtis(self,constant):
-    pass    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
+    raise NotImplementedError    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
 
   # Self-explanatory quick-and-dirty plot machine.  BG plot checks if bg data is available, and dies if not
 
   def quickplot(self,output=None,errors=True,block=False,title=True,**kwargs):
-    if self.is_folded:
+    if self.is_folded():
       x=np.append(self.get_x(),self.get_x()+1)
       y=np.append(self.get_y(),self.get_y())
       ye=np.append(self.get_ye(),self.get_ye())
@@ -270,7 +341,7 @@ class lightcurve(dat.DataSet):
   # slightly more adaptable plotting machine which takes dict inputs to give separate kwargs to errorbars and main line
 
   def plot_lc(self,output=None,block=False,title=True,xlabel=True,ylabel=True,kwargs={'color':'k'},ekwargs={'color':'0.7'}):
-    if self.is_folded:
+    if self.is_folded():
       x=np.append(self.get_x(),self.get_x()+1)
       y=np.append(self.get_y(),self.get_y())
       ye=np.append(self.get_ye(),self.get_ye())
@@ -310,7 +381,7 @@ class lightcurve(dat.DataSet):
   # Creates a scatter plot of an unfolded lightcurve where the x-coord of each point is its phase
 
   def plot_folded_scatterplot(self,period,output=None,block=False,clip_percentile=100,**kwargs):
-    if self.is_folded:
+    if self.is_folded():
       wr.warn("Can't fold that which is already folded!")
     else:
       folder=fo.linear_folder(self,period)
@@ -323,7 +394,7 @@ class lightcurve(dat.DataSet):
       fi.plot_save(output,block)
 
   def plot_varifolded_scatterplot(self,zero_list,output=None,block=False,**kwargs):
-    if self.is_folded:
+    if self.is_folded():
       wr.warn("Can't fold that which is already folded!")
     else:
       folder=fo.varifolder(self,zero_list)
@@ -479,7 +550,7 @@ class lightcurve(dat.DataSet):
     return 0.5/self.get_binsize()
 
   def fourier(self,norm='leahy',normname='custom',squelch=False,const=2):
-    if not squelch and not self.data_evened:
+    if not squelch and not self.is_data_evened():
       wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
     try:
       norm=float(norm)
@@ -490,28 +561,26 @@ class lightcurve(dat.DataSet):
     raw_ft=fou.fft(self.get_y())
     ft=np.abs(raw_ft[1:self.get_length()//2])**2  # crop all data above nyquist and obtain the amplitudes of the FT
     if custnorm:
-      self.ft_norm=normname
-      self.ft=ft*norm
+      self.set_ft_norm(normname)
+      self.set_ft(ft*norm)
     elif norm=='leahy':
-      self.ft_norm='leahy'
-      self.ft=frq.leahy(ft,np.sum(self.get_y()))
-    elif norm=='rms' or norm=='nupnu':
+      self.set_ft_norm('leahy')
+      self.set_ft(frq.leahy(ft,np.sum(self.get_y())))
+    elif norm=='rms':
       if not self.has('b'): raise dat.DataError('No background data available to RMS normalise FT in '+str(self.__class__)+' object')
-      self.ft_norm='rms'
-      self.ft=frq.rms(ft,np.sum(self.get_y()),np.mean(self.get_y()+self.get_b()),np.mean(self.get_b*()),const=const)
+      self.set_ft_norm('rms')
+      self.set_ft(frq.rms(ft,np.sum(self.get_y()),np.mean(self.get_y()+self.get_b()),np.mean(self.get_b*()),const=const))
     else:
       if norm!='none' and not squelch:
         wr.warn('Invalid Fourier normalisation '+norm+' specified: using None normalisation')
-      self.ft_norm='none'
-      self.ft=ft
+      self.set_ft_norm('none')
+      self.set_ft(ft)
     freqs=np.linspace(0,self.get_nyquist(),len(ft)+1)[1:]
-    if norm=='nupnu':
-      self.ft=self.ft*freqs
-    self.ft_e=self.ft
-    self.ft_freqs=freqs
+    self.set_ft_e(self.get_ft())
+    self.set_ft_freqs(freqs)
 
   def windowed_fourier(self,window_size,norm='leahy',normname='custom',const=2,squelch=False):
-    if not squelch and not self.data_evened:
+    if not squelch and not self.is_data_evened():
       wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
     npts=int(window_size/self.get_binsize())
     lognpoints=np.log2(npts)
@@ -519,7 +588,7 @@ class lightcurve(dat.DataSet):
     init_arrays=False
     new_window_size=npts*self.get_binsize()
     if np.abs(new_window_size-window_size)>0.1*window_size and not squelch:
-      print('Window size rounded to '+str(new_window_size)+' '+self.t_units)
+      print('Window size rounded to '+str(new_window_size)+' '+self.get_t_units())
     zero=self.get_start_time()
     data_gaps=self.get_data_gaps()
     for win_i in range(0,int(self.get_xrange()/new_window_size)):
@@ -532,32 +601,32 @@ class lightcurve(dat.DataSet):
       if not init_arrays:
         init_arrays=True
         total=1
-        self.ft_freqs=window.ft_freqs
-        self.ft_norm=window.ft_norm
-        ft=window.ft
-        ft_e=window.ft_e**2
+        self.set_ft_freqs(window.get_ft_freqs())
+        self.set_ft_norm(window.get_ft_norm())
+        ft=window.get_ft()
+        ft_e=window.get_ft_e()**2
       else:
         total+=1
-        ft+=window.ft
-        ft_e+=window.ft_e**2
-    self.ft=ft/total
-    self.ft_e=np.sqrt(ft_e)/total
+        ft+=window.get_ft()
+        ft_e+=window.get_ft_e()**2
+    self.set_ft(ft/total)
+    self.set_ft_e(np.sqrt(ft_e)/total)
 
   def rebin_fourier(self,bin_factor):
     if not self.has('ft'):
       raise dat.DataError('No Fourier spectrum to rebin!')
-    newft_freqs,newft,newft_e=dat.rebin(bin_factor,self.ft_freqs,self.ft,ye=self.ft_e)
-    self.ft=newft
-    self.ft_freqs=newft_freqs
-    self.ft_e=newft_e
+    newft_freqs,newft,newft_e=dat.rebin(bin_factor,self.get_ft_freqs(),self.get_ft(),ye=self.get_ft_e())
+    self.set_ft(newft)
+    self.set_ft_freqs(newft_freqs)
+    self.set_ft_e(newft_e)
 
   def log_rebin_fourier(self,log_res):
     if not self.has('ft'):
       raise dat.DataError('No Fourier spectrum to rebin!')
-    newft_freqs,newft,newft_e=dat.log_rebin(log_res,self.ft_freqs,self.ft,ye=self.ft_e)
-    self.ft=newft
-    self.ft_freqs=newft_freqs
-    self.ft_e=newft_e
+    newft_freqs,newft,newft_e=dat.log_rebin(log_res,self.get_ft_freqs(),self.get_ft(),ye=self.get_ft_e())
+    self.set_ft(newft)
+    self.set_ft_freqs(newft_freqs)
+    self.set_ft_e(newft_e)
     
   def plot_fourier(self,output=None,log=False,logx=False,nupnu=False,**kwargs):
     if not self.has('ft'): self.fourier('leahy')
@@ -568,15 +637,11 @@ class lightcurve(dat.DataSet):
     if logx:
       ax.semilogx()
     if nupnu:
-      if self.ft_norm=='nupnu':
-        wr.warn('Stored Fourier spectrum is already nupnu!  Ignoring.')
-        ax.errorbar(self.ft_freqs,self.ft,yerr=self.ft_e,**kwargs)
-      else:
-        ax.errorbar(self.ft_freqs,self.ft_freqs*self.ft,yerr=self.ft_e*self.ft,**kwargs)
+      ax.errorbar(self.get_ft_freqs(),self.get_ft_nupnu(),yerr=self.get_ft_nupnu_e(),**kwargs)
     else:
-      ax.errorbar(self.ft_freqs,self.ft,yerr=self.ft_e,**kwargs)
-    ax.set_ylabel('"'+self.ft_norm+'"-normalised power')
-    ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
+      ax.errorbar(self.get_ft_freqs(),self.get_ft(),yerr=self.get_ft_e(),**kwargs)
+    ax.set_ylabel('"'+self.get_ft_norm()+'"-normalised power')
+    ax.set_xlabel('Frequency ('+self.get_t_units()+'^-1)')
     fi.plot_save(output,**kwargs)
 
   def fourier_spectrogram(self,binsize,bin_separation):
@@ -592,19 +657,19 @@ class lightcurve(dat.DataSet):
       wr.warn(str(len(freqrange))+' frequency samples requested!  This could take a while.')
       if not util.proceed():
         return None
-    self.ls=frq.lomb_scargle(self.get_x(),self.get_y(),self.get_ye(),freqrange,norm=norm,generalised=generalised)
-    self.ls_freqs=np.array(freqrange)
+    self.set_ls(frq.lomb_scargle(self.get_x(),self.get_y(),self.get_ye(),freqrange,norm=norm,generalised=generalised))
+    self.set_ls_freqs(np.array(freqrange))
     if errors:
-      errgrid=np.zeros((len(self.ls),bootstrapN))
+      errgrid=np.zeros((len(freqrange),bootstrapN))
       for i in range(bootstrapN):
         sample=self.copy()
         fake_y=dat.gaussian_bootstrap(sample.get_y(),sample.get_ye())
         sample.set_y(fake_y)
         sample.lomb_scargle(freqrange,norm=norm,generalised=generalised,squelch=True,errors=False)
-        errgrid[:,i]=sample.ls
-      self.ls_e=np.std(errgrid,axis=1)
+        errgrid[:,i]=sample.get_ls()
+      self.set_ls_e(np.std(errgrid,axis=1))
     else:
-      self.ls_e=self.ls*0
+      self.set_ls_e(self.get_ls()*0)
 
   def auto_lomb_scargle(self,min_f=None,max_f=None,resolution=None,n0=1,norm='auto',generalised=True,squelch=False,errors=False):
     # n0 is the oversampling ratio.  5 is reccommended by e.g. Schwarzenberg-Czerny 1996
@@ -627,45 +692,45 @@ class lightcurve(dat.DataSet):
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Lomb-Scargle Periodogram')
     if as_period:
-      x=1/self.ls_freqs
+      x=1/self.get_ls_freqs()
     else:
-      x=self.ls_freqs
+      x=self.get_ls_freqs()
     if log:
       ax.semilogy()
     if logx:
       ax.semilogx()
     if errors:
       if nupnu:
-        ax.errorbar(x,self.ls*self.ls_freqs,yerr=self.ls_e*self.ls_freqs,**kwargs)
+        ax.errorbar(x,self.get_ls_nupnu(),yerr=self.get_ls_nupnu_e(),**kwargs)
       else:
-        ax.errorbar(x,self.ls,yerr=self.ls_e,**kwargs)
+        ax.errorbar(x,self.get_ls(),yerr=self.get_ls_e(),**kwargs)
     else:
       if nupnu:
-        ax.plot(x,self.ls*self.ls_freqs,**kwargs)
+        ax.plot(x,self.get_ls_nupnu(),**kwargs)
       else:
-        ax.plot(x,self.ls,**kwargs)
+        ax.plot(x,self.get_ls(),**kwargs)
     ax.set_ylabel('Lomb-Scargle power')
     if as_period:
-      ax.set_xlabel('Period ('+self.t_units+')')
+      ax.set_xlabel('Period ('+self.get_t_units()+')')
     else:
-      ax.set_xlabel('Frequency ('+self.t_units+'^-1)')
+      ax.set_xlabel('Frequency ('+self.get_t_units()+'^-1)')
     fi.plot_save(output,block)
 
   def rebin_lomb_scargle(self,bin_factor):
     if not self.has('ls'):
       raise dat.DataError('No Lomb-Scargle spectrum to rebin!')
-    newls_freqs,newls,newls_e=dat.rebin(bin_factor,self.ls_freqs,self.ls,ye=self.ls_e)
-    self.ls=newls
-    self.ls_e=newls_e
-    self.ls_freqs=newls_freqs
+    newls_freqs,newls,newls_e=dat.rebin(bin_factor,self.get_ls_freqs(),self.get_ls(),ye=self.get_ls_e())
+    self.set_ls(newls)
+    self.set_ls_e(newls_e)
+    self.set_ls_freqs(newls_freqs)
 
   def log_rebin_lomb_scargle(self,log_res):
     if not self.has('ls'):
       raise dat.DataError('No Lomb-Scargle spectrum to rebin!')
-    newls_freqs,newls,newls_e=dat.log_rebin(log_res,self.ls_freqs,self.ls,ye=self.ls_e)
-    self.ls=newls
-    self.ls_e=newls_e
-    self.ls_freqs=newls_freqs
+    newls_freqs,newls,newls_e=dat.log_rebin(log_res,self.get_ls_freqs(),self.get_ls(),ye=self.get_ls_e())
+    self.set_ls(newls)
+    self.set_ls_e(newls_e)
+    self.set_ls_freqs(newls_freqs)
 
   def get_freq_resolution(self): # get the minimum frequency resolution for LS or Fourier without oversampling
     minf=1/self.get_xrange()
@@ -678,13 +743,13 @@ class lightcurve(dat.DataSet):
     newlc=self.copy()
     newlc.lomb_scargle(np.arange(f_min,f_max,self.get_freq_resolution()))
     newlc.plot_lomb_scargle()
-    init_vals=(np.max(newlc.ls_freqs),f_min+frange/2,frange/2,0)
-    fit_results=optm.curve_fit(func.lorentzian,newlc.ls_freqs,newlc.ls,init_vals)
+    init_vals=(np.max(newlc.get_ls_freqs()),f_min+frange/2,frange/2,0)
+    fit_results=optm.curve_fit(func.lorentzian,newlc.get_ls_freqs(),newlc.get_ls(),init_vals)
     if plot:
       pl.figure()
       ax=pl.gca()
       newlc.plot_lomb_scargle(output=ax)
-      plotrange=np.arange(newlc.ls_freqs[0],newlc.ls_freqs[-1],(newlc.ls_freqs[-1]-newlc.ls_freqs[0])/100)
+      plotrange=np.arange(newlc.get_ls_freqs()[0],newlc.get_ls_freqs()[-1],(newlc.get_ls_freqs()[-1]-newlc.get_ls_freqs()[0])/100)
       ax.plot(plotrange,func.lorentzian(plotrange,*fit_results[0]),':k',**kwargs)
       pl.show()
     return fit_results
@@ -713,13 +778,13 @@ class lightcurve(dat.DataSet):
           continue
       calved_lc=self.calved(calve_st,calve_ed)
       calved_lc.lomb_scargle(freqrange,norm=lsnorm)
-      lomb_scargle_spec=calved_lc.ls
+      lomb_scargle_spec=calved_lc.get_ls()
       dynamic_spectrum[i,:]=lomb_scargle_spec
       N_datapoints[i]=calved_lc.get_length()
     dynamic_ls_spectrum         = dynamic_spectrum.T
     dynamic_ls_spectrum_tvalues = starttime+bin_separation*(np.arange(0,numbins,1.0))+binsize/2.0
     dynamic_ls_spectrum_fvalues = freqrange
-    dmeta={'x_dimension':'Time','y_dimension':'Frequency','x_unit':self.t_units,'y_unit':self.y_units}
+    dmeta={'x_dimension':'Time','y_dimension':'Frequency','x_unit':self.get_t_units(),'y_unit':self.get_y_units()}
     dls_data=dat.TwoD_Dataframe(dynamic_ls_spectrum_tvalues,dynamic_ls_spectrum_fvalues,dynamic_ls_spectrum,meta=dmeta)
     if as_return:
       return dls_data,N_datapoints
@@ -734,9 +799,9 @@ class lightcurve(dat.DataSet):
     weighted_data=np.multiply(ls_datapoints,data)
     weighted_errs=np.multiply(ls_datapoints,data**2)
     sumN=np.sum(ls_datapoints)
-    self.ls=np.sum(weighted_data,axis=1)/sumN
-    self.ls_freqs=np.array(freqrange)
-    self.ls_e=np.sqrt(np.sum(weighted_errs,axis=1))/sumN
+    self.set_ls(np.sum(weighted_data,axis=1)/sumN)
+    self.set_ls_freqs(np.array(freqrange))
+    self.set_ls_e(np.sqrt(np.sum(weighted_errs,axis=1))/sumN)
 
   def dump_lomb_scargle_spectrogram(self,filename,header=True):
     if not self.has('dynamic_ls_data'):
@@ -757,7 +822,7 @@ class lightcurve(dat.DataSet):
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Dynamic Lomb-Scargle Periodogram')
     ax.set_xlabel('Time '+self.t_unit_string())
-    ax.set_ylabel('Frequency ('+self.t_units+'^-1)')
+    ax.set_ylabel('Frequency ('+self.get_t_units()+'^-1)')
     Z=self.dynamic_ls_data.get_z()
     if colour_range=='auto':
       colour_min=np.min(Z[Z>0])
@@ -803,11 +868,11 @@ class lightcurve(dat.DataSet):
       ax_lc.set_xlabel('Time '+self.t_unit_string())
     if with_1d_ls:
       ax_ls=fig.add_subplot(grid[:size_ratio,size_ratio])
-      ax_ls.semilogx(self.ls,self.ls_freqs,'k')
+      ax_ls.semilogx(self.get_ls(),self.get_ls_freqs(),'k')
       ax_ls.set_yticks([])
       ax_ls.set_xlabel('L-S Power')
-      ax_ls.fill_betweenx(self.ls_freqs,self.ls,0,facecolor='0.7')
-      ax_ls.set_xlim(np.percentile(self.ls,25),max(self.ls*1.01))
+      ax_ls.fill_betweenx(self.get_ls_freqs(),self.get_ls(),0,facecolor='0.7')
+      ax_ls.set_xlim(np.percentile(self.get_ls(),25),max(self.get_ls()*1.01))
       ax_ls.set_ylim(min(self.dynamic_ls_data.get_y()),max(self.dynamic_ls_data.get_y()))
     fi.plot_save(filename,block)
 
@@ -858,16 +923,16 @@ class lightcurve(dat.DataSet):
   # Plot label generation
 
   def t_unit_string(self):
-    if self.t_units=='':
+    if self.get_t_units()=='':
       return ''
     else:
-      return '('+self.t_units+')'
+      return '('+self.get_t_units()+')'
 
   def y_unit_string(self):
-    if self.y_units=='':
+    if self.get_y_units()=='':
       return ''
     else:
-      return '('+self.y_units+')'
+      return '('+self.get_y_units()+')'
 
   #### These functions have an in-place version, and a -ed version which returns a new object ####
 
@@ -997,7 +1062,7 @@ class lightcurve(dat.DataSet):
       self.set_b(newby[mask])
       self.set_be(newbye[mask])
 
-    self.data_evened=True
+    self.set_data_even_flag(True)
 
   def spline_evened(self,binsize=None):
     return self.copy().spline_even(binsize)
@@ -1031,7 +1096,7 @@ class lightcurve(dat.DataSet):
     nerr=self.get_y()-((100**0.2)**-(o_y+o_ye))
     perr=((100**0.2)**-(o_y-o_ye))-self.get_y()
     self.set_ye((nerr*perr)**0.5)
-    self.y_units='Vega'
+    self.set_y_units('Vega')
 
   def demagnituded(self):
     return self.copy().demagnitude()
@@ -1096,23 +1161,23 @@ class lightcurve(dat.DataSet):
     return self.get_x()/period
 
   def set_x_axis_to_Ncycles(self,period):
-    if self.x_axis_is_phase:
+    if self.x_axis_is_phase():
       wr.warn('X-axis is already in NCycles!')
     else:
       self.set_x(self.get_Ncycles(period))
-      self.x_axis_is_phase=True
-      self.t_units='# Cycles'
-      self.period=period
+      self.set_xphase_flag(True)
+      self.set_t_units('# Cycles')
+      self.set_period(period)
 
   def setted_x_axis_to_Ncycles(self,period):  # disregard the awful english, it follows the naming scheme for in-place vs. copy-producing methods...
-    if self.x_axis_is_phase:
+    if self.x_axis_is_phase():
       wr.warn('X-axis is already in NCycles!')
       return self
     else:
       return self.copy().set_x_axis_to_Ncycles(period)
 
   def phase_fold(self,period,phase_bins=100,standev_errors=False):
-    if self.is_folded:
+    if self.is_folded():
       wr.warn('Already folded!  Skipping!')
       return None
     self.folder=fo.linear_folder(self,period)
@@ -1121,12 +1186,12 @@ class lightcurve(dat.DataSet):
     self.set_y(self.folder.get_fy())
     self.set_ye(self.folder.get_fye())
     self.set_meta('folded_period',period)
-    self.is_folded=True
-    self.period=period
-    self.x_axis_is_phase=True
+    self.set_period(period)
+    self.set_folded_flag(True)
+    self.set_xphase_flag(True)
 
   def phase_folded(self,period,phase_bins=100,standev_errors=False):
-    if self.is_folded:
+    if self.is_folded():
       wr.warn('Already folded!  Skipping!')
       return self
     return self.copy().phase_fold(period,phase_bins,standev_errors=standev_errors)
@@ -1134,7 +1199,7 @@ class lightcurve(dat.DataSet):
   # Varifolder from PANTHEON!  Probably super unstable!
 
   def varifold(self,zeros,phase_bins=100,standev_errors=False):
-    if self.is_folded:
+    if self.is_folded():
       wr.warn('Already folded!  Skipping!')
     if len(zeros)<2:
       raise dat.DataError('Must provide at least two zero phase points (and preferably quite a few more!)')
@@ -1146,13 +1211,13 @@ class lightcurve(dat.DataSet):
     self.set_y(self.folder.get_fy())
     self.set_ye(self.folder.get_fye())
     self.set_meta('phase_zeros',zeros)
-    self.is_folded=True
-    self.phase_zeros=zeros
-    self.x_axis_is_phase=True
+    self.set_phase_zeros(zeros)
+    self.set_folded_flag(True)
+    self.set_xphase_flag(True)
     pl.figure()
 
   def varifolded(self,zeros,phase_bins=100,standev_errors=False):
-    if self.is_folded:
+    if self.is_folded():
       wr.warn('Already folded!  Skipping!')
       return self
     return self.copy().varifold(zeros,phase_bins,standev_errors=standev_errors)
@@ -1301,8 +1366,8 @@ class tess_lightcurve(lightcurve):
     self.set_bx(abx[bgmask].astype(float))  # clipping bg lightcurve to same length as main lc, useful after calving
     self.set_b(np.array(self.get_meta('b'))[bgmask].astype(float))
     self.set_be(np.array(self.get_meta('be'))[bgmask].astype(float))
-    self.t_units='BJD'
-    self.y_units='e/s'
+    self.set_t_units('BJD')
+    self.set_y_units('e/s')
 
 class kepler_lightcurve(lightcurve):
   def unpack_metadata(self):
@@ -1321,8 +1386,8 @@ class kepler_lightcurve(lightcurve):
     self.set_bx(abx[bgmask].astype(float))  # clipping bg lightcurve to same length as main lc, useful after calving
     self.set_b(np.array(self.get_meta('b'))[bgmask].astype(float))
     self.set_be(np.array(self.get_meta('be'))[bgmask].astype(float))
-    self.t_units='BJD'
-    self.y_units='e/s'
+    self.set_t_units('BJD')
+    self.set_y_units('e/s')
 
 class rxte_lightcurve(lightcurve):
   def unpack_metadata(self):
@@ -1332,8 +1397,8 @@ class rxte_lightcurve(lightcurve):
     self.gtis=self.get_meta('gtis')
     self.min_channel=self.get_meta('min_channel')
     self.max_channel=self.get_meta('max_channel')
-    self.t_units='s'
-    self.y_units='cts/s/PCU'
+    self.set_t_units('s')
+    self.set_y_units=('cts/s/PCU')
 
   def shift_gtis(self,shift):
     new_gtis=[]
