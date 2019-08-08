@@ -27,7 +27,30 @@ class DataSet(object):
   def is_empty(self):
     return self.get_length()==0
 
-class TwoD_Dataframe(object):
+  # Some universal getters and setters:
+
+  def setup_meta(self,meta):
+    self.meta=meta
+  def get_meta(self,item=None):
+    if item==None:
+      return self.meta
+    return self.meta[item]
+  def set_meta(self,item,value):
+    self.meta[item]=value
+  def get_meta_keys(self):
+    return self.get_meta(None).keys()
+
+  def get_contents(self,key=None):
+    if key==None:
+      return self.__dict__
+    return self.__dict__[key]
+  def set_contents(self,key,value):
+    self.__dict__[key]=value
+
+  def has(self,key):
+    return key in self.get_contents()
+
+class TwoD_Dataframe(DataSet):
   def __init__(self,xvalues,yvalues,zvalues,meta={}):
     xlen=len(xvalues)
     ylen=len(yvalues)
@@ -62,9 +85,6 @@ class TwoD_Dataframe(object):
       self.y_unit=meta['x_unit']
     else:
       self.y_unit=''
-
-  def copy(self):
-    return copy.deepcopy(self)
 
   def xdir_norm(self):
     for i in range(len(self.z[:,0])):

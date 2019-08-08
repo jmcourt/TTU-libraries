@@ -56,22 +56,22 @@ class lightcurve(dat.DataSet):
     tye=tye[nanmask]
     #sort data by time
     sorted_args=tx.argsort()
-    self.x=tx[sorted_args]
-    self.y=ty[sorted_args]
-    self.ye=tye[sorted_args]
+    self.set_x(tx[sorted_args])
+    self.set_y(ty[sorted_args])
+    self.set_ye(tye[sorted_args])
 
     if 'acceptable_gap' not in meta.keys():  # the gap width before a data gap is declared
       meta['acceptable_gap']=1.5
-    self.acceptable_gap=meta['acceptable_gap'] # anything more than 1.5 times the median time separation is considered a data gap
-    self.meta=meta
-    if 't_units' not in self.__dict__:
+    self.set_acceptable_gap(meta['acceptable_gap']) # anything more than 1.5 times the median time separation is considered a data gap
+    self.setup_meta(meta)
+    if not self.has('t_units'):
       self.t_units=''
-    if 'y_units' not in self.__dict__:
+    if not self.has('y_units'):
       self.y_units=''
     if self.is_empty():
-      self.binsize=0
+      self.set_binsize(0)
     else:
-      self.binsize=min(self.delta_T())
+      self.set_binsize(min(self.delta_T()))
     self.ft_norm='N/A'
     self.unpack_metadata()
     self.is_folded=False
@@ -87,6 +87,31 @@ class lightcurve(dat.DataSet):
     return self.y
   def get_ye(self):
     return self.ye
+  def set_x(self,x):
+    self.x=x
+  def set_y(self,y):
+    self.y=y
+  def set_ye(self,ye):
+    self.ye=ye
+
+  def get_bx(self):
+    return self.bx
+  def get_b(self):
+    return self.b
+  def get_be(self):
+    return self.be
+  def set_bx(self,bx):
+    self.bx=bx
+  def set_by(self,b):
+    self.b=b
+  def set_be(self,be):
+    self.be=be
+
+  def get_binsize(self):
+    return self.binsize
+  def set_binsize(self,binsize):
+    self.binsize=binsize
+
   def get_length(self):
     return len(self.get_x())
   def get_acceptable_gap(self):
@@ -94,19 +119,19 @@ class lightcurve(dat.DataSet):
   def get_xrange(self):
     if self.is_empty():
       return 0
-    return self.x[-1]-self.x[0]
+    return self.get_x()[-1]-self.get_x()[0]
   def get_yrange(self):
     if self.is_empty():
       return 0
-    return self.y[-1]-self.y[0]
+    return self.get_y()[-1]-self.get_y()[0]
   def get_start_time(self):
     if self.is_empty():
       return 0
-    return self.x[0]
+    return self.get_x()[0]
   def get_end_time(self):
     if self.is_empty():
       return 0
-    return self.x[-1]
+    return self.get_x()[-1]
   def get_title(self):
     return self.objname
 
@@ -124,26 +149,26 @@ class lightcurve(dat.DataSet):
     return spline
 
   def get_bg_spline(self,kind='slinear',fill_value='extrapolate'):
-    spline=intp.interp1d(self.bx,self.b,kind=kind,fill_value=fill_value)
+    spline=intp.interp1d(self.get_bx(),self.get_b(),kind=kind,fill_value=fill_value)
     return spline
 
   def get_bg_err_spline(self,kind='slinear',fill_value='extrapolate'):
-    spline=intp.interp1d(self.bx,self.be,kind=kind,fill_value=fill_value)
+    spline=intp.interp1d(self.get_bx(),self.get_be(),kind=kind,fill_value=fill_value)
     return spline
 
   # Dump contents to a csv
 
   def dump(self,filename,data_sep=' ',meta_sep=':'):
-    k=list(self.meta.keys())
+    k=list(self.get_meta_keys())
     k.sort()
     f=open(filename,'w')
     f.write('META_DATA\n')
     for key in k:
-      if type(self.meta[key]) in (str,int,float):
-        f.write(key+meta_sep+str(self.meta[key])+'\n')
+      if type(self.get_meta(key)) in (str,int,float):
+        f.write(key+meta_sep+str(self.get_meta(key))+'\n')
     f.write('SCIENCE_DATA\n')
     for i in range(self.get_length()):
-      f.write(str(self.x[i])+data_sep+str(self.y[i])+data_sep+str(self.ye[i])+'\n')
+      f.write(str(self.get_x()[i])+data_sep+str(self.get_y()[i])+data_sep+str(self.get_ye()[i])+'\n')
     f.close()
 
   # Play with time axis
@@ -162,10 +187,10 @@ class lightcurve(dat.DataSet):
     return zeroed_lc
 
   def add_time(self,time):
-    self.x=self.x+time
+    self.set_x(self.get_x()+time)
     self.shift_gtis(time)
-    if 'b' in self.__dict__:
-      self.bx=self.bx+time
+    if self.has('b'):
+      self.set_bx(self.get_bx()+time)
 
   def added_time(self,time):
     added_lc=self.copy()
@@ -173,14 +198,14 @@ class lightcurve(dat.DataSet):
     return added_lc
 
   def multiply_time(self,constant):
-    self.x=self.x*constant
-    self.binsize=self.binsize*constant
+    self.set_x(self.get_x()*constant)
+    self.set_binsize(self.get_binsize()*constant)
     self.multiply_gtis(constant)
-    if 'b' in self.__dict__:
-      self.bx=self.bx*constant
-    if 'ft_freqs' in self.__dict__:
+    if self.has('b'):
+      self.set_bx(self.get_bx()*constant)
+    if self.has('ft_freqs'):
       self.ft_freqs=self.ft_freqs/constant
-    if 'ls_freqs' in self.__dict__:
+    if self.has('ls_freqs'):
       self.ls_freqs=self.ls_freqs/constant
 
   def multiplied_time(self,constant):
@@ -212,14 +237,14 @@ class lightcurve(dat.DataSet):
 
   def quickplot(self,output=None,errors=True,block=False,title=True,**kwargs):
     if self.is_folded:
-      x=np.append(self.x,self.x+1)
-      y=np.append(self.y,self.y)
-      ye=np.append(self.ye,self.ye)
+      x=np.append(self.get_x(),self.get_x()+1)
+      y=np.append(self.get_y(),self.get_y())
+      ye=np.append(self.get_ye(),self.get_ye())
       xlab='Phase'
     else:
-      x=self.x
-      y=self.y
-      ye=self.ye
+      x=self.get_x()
+      y=self.get_y()
+      ye=self.get_ye()
       xlab='Time '+self.t_unit_string()
     ax=fi.filter_axes(output)
     if title:
@@ -233,12 +258,12 @@ class lightcurve(dat.DataSet):
     fi.plot_save(output,block)
 
   def plot_bg(self,output=None,block=False,**kwargs):
-    if 'b' not in self.__dict__:
+    if self.has('b'):
        raise NotImplementedError('No background data available in '+str(self.__class__)+' object')
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' bg Quick Plot')
-    ax.errorbar(self.bx,self.b,yerr=self.be,label='bg',**kwargs)
-    ax.errorbar(self.x,self.y,yerr=self.ye,label='phot',**kwargs)
+    ax.errorbar(self.get_bx(),self.get_b(),yerr=self.get_be(),label='bg',**kwargs)
+    ax.errorbar(self.get_x(),self.get_y(),yerr=self.get_ye(),label='phot',**kwargs)
     ax.legend()
     fi.plot_save(output,block)
 
@@ -246,14 +271,14 @@ class lightcurve(dat.DataSet):
 
   def plot_lc(self,output=None,block=False,title=True,xlabel=True,ylabel=True,kwargs={'color':'k'},ekwargs={'color':'0.7'}):
     if self.is_folded:
-      x=np.append(self.x,self.x+1)
-      y=np.append(self.y,self.y)
-      ye=np.append(self.ye,self.ye)
+      x=np.append(self.get_x(),self.get_x()+1)
+      y=np.append(self.get_y(),self.get_y())
+      ye=np.append(self.get_ye(),self.get_ye())
       xlab='Phase'
     else:
-      x=self.x
-      y=self.y
-      ye=self.ye
+      x=self.get_x()
+      y=self.get_y()
+      ye=self.get_ye()
       xlab='Time '+self.t_unit_string()
     ax=fi.filter_axes(output)
 
@@ -291,10 +316,10 @@ class lightcurve(dat.DataSet):
       folder=fo.linear_folder(self,period)
       ax=fi.filter_axes(output)
       p=folder.get_p()
-      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/self.get_length(),0.2),color='k',**kwargs)
+      ax.scatter(np.append(p,p+1),np.append(self.get_y(),self.get_y()),marker='.',alpha=min(500/self.get_length(),0.2),color='k',**kwargs)
       ax.set_xlabel('Phase')
       ax.set_ylabel('Rate '+self.y_unit_string())
-      ax.set_ylim(np.percentile(self.y,100-clip_percentile),np.percentile(self.y,clip_percentile))
+      ax.set_ylim(np.percentile(self.get_y(),100-clip_percentile),np.percentile(self.get_y(),clip_percentile))
       fi.plot_save(output,block)
 
   def plot_varifolded_scatterplot(self,zero_list,output=None,block=False,**kwargs):
@@ -304,7 +329,7 @@ class lightcurve(dat.DataSet):
       folder=fo.varifolder(self,zero_list)
       ax=fi.filter_axes(output)
       p=folder.get_p()
-      ax.scatter(np.append(p,p+1),np.append(self.y,self.y),marker='.',alpha=min(500/self.get_length(),0.2),color='k',**kwargs)
+      ax.scatter(np.append(p,p+1),np.append(self.get_y(),self.get_y()),marker='.',alpha=min(500/self.get_length(),0.2),color='k',**kwargs)
       ax.set_xlabel('Phase')
       ax.set_ylabel('Rate '+self.y_unit_string())
       fi.plot_save(output,block)
@@ -312,21 +337,21 @@ class lightcurve(dat.DataSet):
   # return approx location of significant data gaps (>25* median time separation by default)
 
   def delta_T(self):
-    return self.x[1:]-self.x[:-1]
+    return self.get_x()[1:]-self.get_x()[:-1]
 
   def get_data_gaps(self):
     delta_T=self.delta_T()
-    acceptable_gap=self.acceptable_gap*np.median(delta_T)
+    acceptable_gap=self.get_acceptable_gap()*np.median(delta_T)
     gap_mask=delta_T>acceptable_gap
-    gap_starts=self.x[:-1][gap_mask]
-    gap_ends=self.x[1:][gap_mask]
+    gap_starts=self.get_x()[:-1][gap_mask]
+    gap_ends=self.get_x()[1:][gap_mask]
     gaps=[(gap_starts[i],gap_ends[i]) for i in range(len(gap_starts))]
     return gaps
 
   # RMS and associated plots
 
   def get_rms(self):
-    return rms(self.y)
+    return rms(self.get_y())
 
   def prep_variability_stats(self,window):
     n_windows=int(self.get_xrange()/window)
@@ -356,7 +381,7 @@ class lightcurve(dat.DataSet):
     self.rms_over_time_dip_depths=rd[mask]
 
   def plot_rms(self,fractional=False,output=None,x_unit='time',block=False,**kwargs):
-    if 'rms_over_time_x' not in self.__dict__:
+    if not self.has('rms_over_time_x'):
       raise dat.DataError('RMS plots prepared!  Prepare with prep_variability_stats')
     if x_unit.lower() not in ('time','rate'):
       raise dat.DataError('I dont recognise the X-unit "'+str(x_unit)+'"!  Valid X-units are "time" or "rate"')
@@ -377,7 +402,7 @@ class lightcurve(dat.DataSet):
     fi.plot_save(output,block)
 
   def plot_peak_heights(self,fractional=False,output=None,x_unit='time',block=False,**kwargs):
-    if 'rms_over_time_x' not in self.__dict__:
+    if not self.has('rms_over_time_x'):
       raise dat.DataError('Peak heights plot not prepared!  Prepare with prep_variability_stats')
     if x_unit.lower() not in ('time','rate'):
       raise dat.DataError('I dont recognise the X-unit "'+str(x_unit)+'"!  Valid X-units are "time" or "rate"')
@@ -398,7 +423,7 @@ class lightcurve(dat.DataSet):
     fi.plot_save(output,block)
 
   def plot_dip_depths(self,fractional=False,output=None,x_unit='time',block=False,**kwargs):
-    if 'rms_over_time_x' not in self.__dict__:
+    if not self.has('rms_over_time_x'):
       raise dat.DataError('Dip depths plot not prepared!  Prepare with prep_variability_stats')
     if x_unit.lower() not in ('time','rate'):
       raise dat.DataError('I dont recognise the X-unit "'+str(x_unit)+'"!  Valid X-units are "time" or "rate"')
@@ -419,7 +444,7 @@ class lightcurve(dat.DataSet):
     fi.plot_save(output,block)
 
   def plot_peaks_and_dips(self,fractional=False,output=None,x_unit='time',block=False,**kwargs):
-    if 'rms_over_time_x' not in self.__dict__:
+    if not self.has('rms_over_time_x'):
       raise dat.DataError('Dip depths plot not prepared!  Prepare with prep_variability_stats')
     if x_unit.lower() not in ('time','rate'):
       raise dat.DataError('I dont recognise the X-unit "'+str(x_unit)+'"!  Valid X-units are "time" or "rate"')
@@ -451,7 +476,7 @@ class lightcurve(dat.DataSet):
   # Some general Fourier methods
 
   def get_nyquist(self):
-    return 0.5/self.binsize
+    return 0.5/self.get_binsize()
 
   def fourier(self,norm='leahy',normname='custom',squelch=False,const=2):
     if not squelch and not self.data_evened:
@@ -462,18 +487,18 @@ class lightcurve(dat.DataSet):
     except ValueError:
       norm=norm.lower()
       custnorm=False
-    raw_ft=fou.fft(self.y)
+    raw_ft=fou.fft(self.get_y())
     ft=np.abs(raw_ft[1:self.get_length()//2])**2  # crop all data above nyquist and obtain the amplitudes of the FT
     if custnorm:
       self.ft_norm=normname
       self.ft=ft*norm
     elif norm=='leahy':
       self.ft_norm='leahy'
-      self.ft=frq.leahy(ft,np.sum(self.y))
+      self.ft=frq.leahy(ft,np.sum(self.get_y()))
     elif norm=='rms' or norm=='nupnu':
-      if 'b' not in self.__dict__: raise NotImplementedError('No background data available to RMS normalise FT in '+str(self.__class__)+' object')
+      if not self.has('b'): raise dat.DataError('No background data available to RMS normalise FT in '+str(self.__class__)+' object')
       self.ft_norm='rms'
-      self.ft=frq.rms(ft,np.sum(self.y),np.mean(self.y+self.b),np.mean(self.b),const=const)
+      self.ft=frq.rms(ft,np.sum(self.get_y()),np.mean(self.get_y()+self.get_b()),np.mean(self.get_b*()),const=const)
     else:
       if norm!='none' and not squelch:
         wr.warn('Invalid Fourier normalisation '+norm+' specified: using None normalisation')
@@ -488,11 +513,11 @@ class lightcurve(dat.DataSet):
   def windowed_fourier(self,window_size,norm='leahy',normname='custom',const=2,squelch=False):
     if not squelch and not self.data_evened:
       wr.warn('Internal Fourier method in lightcurve objects does NOT check for evenly spaced data yet!')
-    npts=int(window_size/self.binsize)
+    npts=int(window_size/self.get_binsize())
     lognpoints=np.log2(npts)
     npts=2**round(lognpoints)
     init_arrays=False
-    new_window_size=npts*self.binsize
+    new_window_size=npts*self.get_binsize()
     if np.abs(new_window_size-window_size)>0.1*window_size and not squelch:
       print('Window size rounded to '+str(new_window_size)+' '+self.t_units)
     zero=self.get_start_time()
@@ -519,7 +544,7 @@ class lightcurve(dat.DataSet):
     self.ft_e=np.sqrt(ft_e)/total
 
   def rebin_fourier(self,bin_factor):
-    if 'ft' not in self.__dict__:
+    if not self.has('ft'):
       raise dat.DataError('No Fourier spectrum to rebin!')
     newft_freqs,newft,newft_e=dat.rebin(bin_factor,self.ft_freqs,self.ft,ye=self.ft_e)
     self.ft=newft
@@ -527,7 +552,7 @@ class lightcurve(dat.DataSet):
     self.ft_e=newft_e
 
   def log_rebin_fourier(self,log_res):
-    if 'ft' not in self.__dict__:
+    if not self.has('ft'):
       raise dat.DataError('No Fourier spectrum to rebin!')
     newft_freqs,newft,newft_e=dat.log_rebin(log_res,self.ft_freqs,self.ft,ye=self.ft_e)
     self.ft=newft
@@ -535,7 +560,7 @@ class lightcurve(dat.DataSet):
     self.ft_e=newft_e
     
   def plot_fourier(self,output=None,log=False,logx=False,nupnu=False,**kwargs):
-    if 'ft' not in self.__dict__: self.fourier('leahy')
+    if not self.has('ft'): self.fourier('leahy')
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Fourier Spectrum')
     if log:
@@ -567,19 +592,17 @@ class lightcurve(dat.DataSet):
       wr.warn(str(len(freqrange))+' frequency samples requested!  This could take a while.')
       if not util.proceed():
         return None
-    self.ls=frq.lomb_scargle(self.x,self.y,self.ye,freqrange,norm=norm,generalised=generalised)
+    self.ls=frq.lomb_scargle(self.get_x(),self.get_y(),self.get_ye(),freqrange,norm=norm,generalised=generalised)
     self.ls_freqs=np.array(freqrange)
     if errors:
       errgrid=np.zeros((len(self.ls),bootstrapN))
       for i in range(bootstrapN):
         sample=self.copy()
         fake_y=dat.gaussian_bootstrap(sample.get_y(),sample.get_ye())
-        sample.y=fake_y
+        sample.set_y(fake_y)
         sample.lomb_scargle(freqrange,norm=norm,generalised=generalised,squelch=True,errors=False)
         errgrid[:,i]=sample.ls
       self.ls_e=np.std(errgrid,axis=1)
-      print(len(self.ls_e))
-      print(len(self.ls))
     else:
       self.ls_e=self.ls*0
 
@@ -600,7 +623,7 @@ class lightcurve(dat.DataSet):
     print('Resolution   : '+str(1/(self.get_xrange())))
 
   def plot_lomb_scargle(self,log=False,logx=False,nupnu=False,output=None,as_period=False,block=False,errors=False,**kwargs):
-    if not ('ls' in self.__dict__): self.lomb_scargle(np.linspace(0,0.05/self.binsize,10000)[1:])
+    if not self.has('ls'): self.auto_lomb_scargle()
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Lomb-Scargle Periodogram')
     if as_period:
@@ -629,7 +652,7 @@ class lightcurve(dat.DataSet):
     fi.plot_save(output,block)
 
   def rebin_lomb_scargle(self,bin_factor):
-    if 'ls' not in self.__dict__:
+    if not self.has('ls'):
       raise dat.DataError('No Lomb-Scargle spectrum to rebin!')
     newls_freqs,newls,newls_e=dat.rebin(bin_factor,self.ls_freqs,self.ls,ye=self.ls_e)
     self.ls=newls
@@ -637,7 +660,7 @@ class lightcurve(dat.DataSet):
     self.ls_freqs=newls_freqs
 
   def log_rebin_lomb_scargle(self,log_res):
-    if 'ls' not in self.__dict__:
+    if not self.has('ls'):
       raise dat.DataError('No Lomb-Scargle spectrum to rebin!')
     newls_freqs,newls,newls_e=dat.log_rebin(log_res,self.ls_freqs,self.ls,ye=self.ls_e)
     self.ls=newls
@@ -716,18 +739,18 @@ class lightcurve(dat.DataSet):
     self.ls_e=np.sqrt(np.sum(weighted_errs,axis=1))/sumN
 
   def dump_lomb_scargle_spectrogram(self,filename,header=True):
-    if 'dynamic_ls_data' not in self.__dict__:
+    if not self.has('dynamic_ls_data'):
       wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping csv dump!')
       return None
     self.dynamic_ls_data.dump(filename,header=header)
 
   def get_lomb_scargle_spectrogram(self):
-    if 'dynamic_ls_data' not in self.__dict__:
+    if not self.has('dynamic_ls_data'):
       wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping grabbing!')
     return self.dynamic_ls_data
 
   def plot_lomb_scargle_spectrogram(self,colour_range='auto',output=None,block=False,cmap='viridis',colourbar=True,cbar_ax=None,**kwargs):
-    if 'dynamic_ls_data' not in self.__dict__:
+    if not self.has('dynamic_ls_data'):
       raise dat.DataError('Dynamic Lomb-Scargle Spectrum not prepared!')
     elif self.dynamic_ls_data.get_max()<=0:
       raise dat.DataError('Dynamic LS spectrum is empty!  Is your Acceptable Gap parameter too small?')
@@ -753,7 +776,7 @@ class lightcurve(dat.DataSet):
 
   def plot_lomb_scargle_spectrogram_combo(self,colour_range='auto',filename=None,with_lc=True,with_1d_ls=True,figsize=(20,20),cmap='viridis',block=False):
 
-    if 'dynamic_ls_data' not in self.__dict__:
+    if not self.has('dynamic_ls_data'):
       wr.warn('Dynamic Lomb-Scargle Spectrum not prepared!  Skipping plotting!')
       return None
     elif self.dynamic_ls_data.get_max()<=0:
@@ -793,46 +816,44 @@ class lightcurve(dat.DataSet):
   def add_data(self,lc):
     if lc.__class__!=self.__class__:
       raise TypeError('Cannot concatenate '+str(lc.__class__)+' and '+str(self.__class__)+'!')
-    dictkeys1=self.__dict__
-    dictkeys2=lc.__dict__
+    dictkeys1=self.get_contents()
+    dictkeys2=lc.get_contents()
     keyset=(set(dictkeys1)|set(dictkeys2))-set(('x','y','ye','bx','b','be','meta','sector')) #some protected dict items which are allowed to mismatch
     for key in keyset:
-      if key not in self.__dict__:
-        self.__dict__[key]=lc.__dict__[key]
-      elif key not in lc.__dict__:
+      if not self.has(key):
+        self.set_contents(key,lc.get_contents([key]))
+      elif not lc.has(key):
         pass
-      elif self.__dict__[key]!=lc.__dict__[key]:
+      elif self.get_contents(key)!=lc.get_contents(key):
         wr.warn('Warning: '+key.upper()+' does not match!')
-    if ('b' in self.__dict__) and ('b' in lc.__dict__):
+    if self.has('b') and lc.has('b'):
       both_bg=True
     else:
       both_bg=False
     if lc.get_start_time()>self.get_end_time():
-      self.x=np.append(self.x,lc.x)
-      self.y=np.append(self.y,lc.y)
-      self.ye=np.append(self.ye,lc.ye)
+      self.set_x(np.append(self.get_x(),lc.get_x()))
+      self.set_y(np.append(self.get_y(),lc.get_y()))
+      self.set_ye(np.append(self.get_ye(),lc.get_ye()))
       if both_bg:
-        self.bx=np.append(self.bx,lc.bx)
-        self.b=np.append(self.b,lc.b)
-        self.be=np.append(self.be,lc.be)
+        self.set_bx(np.append(self.get_bx(),lc.get_bx()))
+        self.set_b(np.append(self.get_b(),lc.get_b()))
+        self.set_be(np.append(self.get_be(),lc.get_be()))
     elif lc.get_end_time()<self.get_start_time():
-      self.x=np.append(lc.x,self.x)
-      self.y=np.append(lc.y,self.y)
-      self.ye=np.append(lc.ye,self.ye)
+      self.set_x(np.append(lc.x,self.get_x()))
+      self.set_y(np.append(lc.get_y(),self.get_y()))
+      self.set_ye(np.append(lc.get_ye(),self.get_ye()))
       if both_bg:
-        self.bx=np.append(lc.bx,self.bx)
-        self.b=np.append(lc.b,self.b)
-        self.be=np.append(lc.be,self.be)
+        self.set_bx(np.append(lc.get_bx(),self.get_bx()))
+        self.set_b(np.append(lc.get_b(),self.get_b()))
+        self.set_be(np.append(lc.get_be(),self.get_be()))
     else:
       raise dat.DataError('Datasets overlap in time!  Cannot concatenate!')
-    if 'sector' in self.__dict__:
+    if self.has('sector'):
       self.sector=''  # nuke sector info if several sectors have been cated
-      self.meta['sector']=''
+      self.set_meta('sector','')
 
   def added_data(self,lc):
-    lc0=self.copy()
-    lc0.add_data(lc)
-    return lc0
+    return self.copy().add_data(lc)
 
   # Plot label generation
 
@@ -856,33 +877,29 @@ class lightcurve(dat.DataSet):
     with wr.catch_warnings():
       wr.filterwarnings('ignore',message='invalid value encountered in less')
       wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
-      mask=np.logical_and(self.x>=stime,self.x<etime)
-    self.x=self.x[mask]
-    self.y=self.y[mask]
-    self.ye=self.ye[mask]
-    if 'b' in self.__dict__:
+      mask=np.logical_and(self.get_x()>=stime,self.get_x()<etime)
+    self.set_x(self.get_x[mask])
+    self.set_y(self.get_y[mask])
+    self.set_ye(self.get_ye[mask])
+    if self.has('b'):
       with wr.catch_warnings():
         wr.filterwarnings('ignore',message='invalid value encountered in less')
         wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
-        mask=np.logical_and(self.bx>=stime,self.bx<etime)
-      self.bx=self.bx[mask]
-      self.b=self.b[mask]
-      self.be=self.be[mask]
+        mask=np.logical_and(self.get_bx()>=stime,self.get_bx()<etime)
+      self.set_bx(self.get_bx()[mask])
+      self.set_b(self.get_b()[mask])
+      self.set_be(self.get_be()[mask])
 
   def calved(self,stime,etime):
-    calved_lc=self.copy()
-    calved_lc.calve(stime,etime)
-    return calved_lc
+    return self.copy().calve(stime,etime)
 
   def calve_by_length(self,length):
-    self.x=self.x[:length]
-    self.y=self.y[:length]
-    self.ye=self.ye[:length]
+    self.set_x(self.get_x()[:length])
+    self.set_y(self.get_y()[:length])
+    self.set_ye(self.get_ye()[:length])
 
   def calved_by_length(self,length):
-    calved_lc=self.copy()
-    calved_lc.calve_by_length(length)
-    return calved_lc
+    return self.copy().calve_by_length(length)
 
   # Attempts to detrend the data for a given window size.
 
@@ -890,13 +907,11 @@ class lightcurve(dat.DataSet):
     if method==None:
       method='time_mean'
       print('No smoothing method specified; using Time Mean')
-    newy=self.y-smart_smooth(self,window_size,method)
-    self.y=newy
+    newy=self.get_y-smart_smooth(self,window_size,method)
+    self.set_y(newy)
 
   def detrended(self,window_size,method=None):
-    detrended_lc=self.copy()
-    detrended_lc.detrend(window_size,method)
-    return detrended_lc
+    return self.copy().detrend(window_size,method)
 
   def plot_with_trend(self,window_size,method=None,output=None,block=False,**kwargs):
     ax=fi.filter_axes(output)
@@ -912,52 +927,46 @@ class lightcurve(dat.DataSet):
       method='time_mean'
       print('No smoothing method specified; using Time Mean')
     newy=smart_smooth(self,window_size,method)
-    self.y=newy
+    self.set_y(newy)
 
   def smoothed(self,window_size,method=None):
-    smoothed_lc=self.copy()
-    smoothed_lc.smooth(window_size,method)
-    return smoothed_lc
+    return self.copy().smooth(window_size,method)
 
   # Shuffler; returns the y,ye pairs in a random order
 
   def shuffle(self):
     indices=np.arange(self.get_length(),dtype=int)
     rn.shuffle(indices)
-    self.y=self.y[indices]
-    self.ye=self.ye[indices]
+    self.set_y(self.get_y[indices])
+    self.set_ye(self.get_ye[indices])
 
   def shuffled(self):
-    shuffled_lc=self.copy()
-    shuffled_lc.shuffle()
-    return shuffled_lc
+    return self.copy().shuffle()
 
   # Bin evener & spline evener: forces data into bins of even width!
   def even_bins(self,binsize=None):
-    if binsize==None: binsize=self.binsize
+    if binsize==None: binsize=self.get_binsize()
     newx=np.arange(self.get_start_time(),self.get_end_time(),binsize)
     newy=np.zeros(len(newx))*np.nan
     newe=np.zeros(len(newx))*np.nan
     for i in range(len(newx)):
       b_left=newx[i]
-      mask=np.logical_and(self.x>=b_left,self.x<b_left+binsize)
+      mask=np.logical_and(self.get_x()>=b_left,self.get_x()<b_left+binsize)
       N=np.sum(mask)
       if N==0:
         continue
-      newy[i]=np.mean(self.y[mask])
-      newe[i]=np.sqrt(np.sum(self.ye[mask]**2))/N
-    self.x=newx
-    self.y=newy
-    self.ye=newe
-    self.binsize=binsize
+      newy[i]=np.mean(self.get_y[mask])
+      newe[i]=np.sqrt(np.sum(self.get_ye[mask]**2))/N
+    self.set_x(newx)
+    self.set_y(newy)
+    self.set_ye(newe)
+    self.set_binsize(binsize)
 
   def evened_bins(self,binsize=None):
-    evened_lc=self.copy()
-    evened_lc.even_bins(binsize)
-    return evened_lc
+    return self.copy().even_bins(binsize)
 
   def spline_even(self,binsize=None):
-    if binsize==None: binsize=self.binsize
+    if binsize==None: binsize=self.get_binsize()
     gaps=self.get_data_gaps()
     newx=np.arange(self.get_start_time(),self.get_end_time(),binsize)
 
@@ -967,7 +976,7 @@ class lightcurve(dat.DataSet):
     newy=evener_spline(newx)
     newye=errorer_spline(newx)
 
-    if 'b' in self.__dict__:
+    if self.has('b'):
       evener_b_spline=self.get_bg_spline()
       errorer_b_spline=self.get_bg_err_spline()
       newby=evener_b_spline(newx)
@@ -978,15 +987,15 @@ class lightcurve(dat.DataSet):
       gapmask=np.logical_or(newx<gap[0],newx>gap[1])
       mask=np.logical_and(mask,gapmask)
 
-    self.x=newx[mask]
-    self.y=newy[mask]
-    self.ye=newye[mask]
-    self.binsize=binsize
+    self.set_x(newx[mask])
+    self.set_y(newy[mask])
+    self.set_ye(newye[mask])
+    self.set_binsize(binsize)
 
-    if 'b' in self.__dict__:
-      self.bx=newx[mask]
-      self.b=newby[mask]
-      self.be=newbye[mask]
+    if self.has('b'):
+      self.set_bx(newx[mask])
+      self.set_b(newby[mask])
+      self.set_be(newbye[mask])
 
     self.data_evened=True
 
@@ -997,18 +1006,18 @@ class lightcurve(dat.DataSet):
 
   def rebin(self,time):
     newx,newy,newye=dat.rebin(time,self.get_x(),self.get_y(),ye=self.get_ye())
-    self.x=newx
-    self.y=newy
-    self.ye=newye
+    self.set_x(newx)
+    self.set_y(newy)
+    self.set_ye(newye)
 
   def rebinned(self,time):
     return self.copy().rebin(time)
 
   def rebin_by_factor(self,factor):
     newx,newy,newye=dat.rebin_by_factor(factor,self.get_x(),self.get_y(),ye=self.get_ye())
-    self.x=newx
-    self.y=newy
-    self.ye=newye
+    self.set_x(newx)
+    self.set_y(newy)
+    self.set_ye(newye)
 
   def rebinned_by_factor(self,factor):
     return self.copy().rebin_by_factor(factor)
@@ -1016,12 +1025,12 @@ class lightcurve(dat.DataSet):
   # Eww yuck get rid of magnitude measurements
 
   def demagnitude(self):
-    o_y=self.y
-    o_ye=self.ye
-    self.y=(100**0.2)**-o_y
-    nerr=self.y-((100**0.2)**-(o_y+o_ye))
-    perr=((100**0.2)**-(o_y-o_ye))-self.y
-    self.ye=(nerr*perr)**0.5
+    o_y=self.get_y()
+    o_ye=self.get_ye()
+    self.set_y((100**0.2)**-o_y)
+    nerr=self.get_y()-((100**0.2)**-(o_y+o_ye))
+    perr=((100**0.2)**-(o_y-o_ye))-self.get_y()
+    self.set_ye((nerr*perr)**0.5)
     self.y_units='Vega'
 
   def demagnituded(self):
@@ -1030,7 +1039,7 @@ class lightcurve(dat.DataSet):
   # Flux phase diagrams!
 
   def flux_phase_diagram(self,period,Ncycles_per_line=2):
-    phase_bins=int(round(period/self.binsize)*Ncycles_per_line)
+    phase_bins=int(round(period/self.get_binsize())*Ncycles_per_line)
     even_data=self.evened_bins(period*Ncycles_per_line/phase_bins)
     length=even_data.get_length()
     length=(length//phase_bins)*phase_bins
@@ -1081,16 +1090,16 @@ class lightcurve(dat.DataSet):
     fi.plot_save(output,block)
 
   def get_phases(self,period):
-    return (self.x%period)/period
+    return (self.get_x()%period)/period
 
   def get_Ncycles(self,period):
-    return self.x/period
+    return self.get_x()/period
 
   def set_x_axis_to_Ncycles(self,period):
     if self.x_axis_is_phase:
       wr.warn('X-axis is already in NCycles!')
     else:
-      self.x=self.get_Ncycles(period)
+      self.set_x(self.get_Ncycles(period))
       self.x_axis_is_phase=True
       self.t_units='# Cycles'
       self.period=period
@@ -1098,10 +1107,9 @@ class lightcurve(dat.DataSet):
   def setted_x_axis_to_Ncycles(self,period):  # disregard the awful english, it follows the naming scheme for in-place vs. copy-producing methods...
     if self.x_axis_is_phase:
       wr.warn('X-axis is already in NCycles!')
+      return self
     else:
-      Ncycles_lc=self.copy()
-      Ncycles_lc.set_x_axis_to_Ncycles(period)
-      return Ncycles_lc
+      return self.copy().set_x_axis_to_Ncycles(period)
 
   def phase_fold(self,period,phase_bins=100,standev_errors=False):
     if self.is_folded:
@@ -1109,21 +1117,19 @@ class lightcurve(dat.DataSet):
       return None
     self.folder=fo.linear_folder(self,period)
     self.folder.fold(phase_bins,standev_errors=standev_errors)
-    self.x=self.folder.get_fx()
-    self.y=self.folder.get_fy()
-    self.ye=self.folder.get_fye()
-    self.meta['folded_period']=period
+    self.set_x(self.folder.get_fx())
+    self.set_y(self.folder.get_fy())
+    self.set_ye(self.folder.get_fye())
+    self.set_meta('folded_period',period)
     self.is_folded=True
     self.period=period
     self.x_axis_is_phase=True
 
   def phase_folded(self,period,phase_bins=100,standev_errors=False):
-    folded_lc=self.copy()
     if self.is_folded:
       wr.warn('Already folded!  Skipping!')
-      return folded_lc
-    folded_lc.phase_fold(period,phase_bins,standev_errors=standev_errors)
-    return folded_lc
+      return self
+    return self.copy().phase_fold(period,phase_bins,standev_errors=standev_errors)
 
   # Varifolder from PANTHEON!  Probably super unstable!
 
@@ -1136,22 +1142,20 @@ class lightcurve(dat.DataSet):
     zeros.sort()
     self.folder=fo.varifolder(self,zeros)
     self.folder.fold(phase_bins,standev_errors=standev_errors)
-    self.x=self.folder.get_fx()
-    self.y=self.folder.get_fy()
-    self.ye=self.folder.get_fye()
-    self.meta['phase_zeros']=zeros
+    self.set_x(self.folder.get_fx())
+    self.set_y(self.folder.get_fy())
+    self.set_ye(self.folder.get_fye())
+    self.set_meta('phase_zeros',zeros)
     self.is_folded=True
     self.phase_zeros=zeros
     self.x_axis_is_phase=True
     pl.figure()
 
   def varifolded(self,zeros,phase_bins=100,standev_errors=False):
-    folded_lc=self.copy()
     if self.is_folded:
       wr.warn('Already folded!  Skipping!')
-      return folded_lc
-    folded_lc.varifold(zeros,phase_bins,standev_errors=standev_errors)
-    return folded_lc
+      return self
+    return self.copy().varifold(zeros,phase_bins,standev_errors=standev_errors)
 
   # Gets the period at which the dispersion in a folded lightcurve's phase bins is minimum.  One way of working out a period
 
@@ -1189,117 +1193,104 @@ class lightcurve(dat.DataSet):
   # Some super basic arithmetic functions for manipulating lightcurves, i.e. "add a constant", "divide by a constant"
 
   def multiply_by_constant(self,constant):
-    self.y=self.y*constant
-    self.ye=self.ye*constant
+    self.set_y(self.get_y()*constant)
+    self.set_ye(self.get_ye()*constant)
 
   def multiplied_by_constant(self,constant):
-    multiplied_lc=self.copy()
-    multiplied_lc.multiply_by_constant(constant)
-    return multiplied_lc
+    return self.copy().multiply_by_constant(constant)
 
   def add_constant(self,constant):
-    self.y=self.y+constant
+    self.set_y(self.get_y()+constant)
 
   def added_constant(self,constant):
-    added_lc=self.copy()
-    added_lc.add_constant(constant)
-    return added_lc
+    return self.copy().add_constant(constant)
 
   def add_spline(self,spline):
-    self.y=self.y+spline(self.x)
+    self.set_y(self.get_y()+spline(self.get_x()))
 
   def added_spline(self,spline):
-    added_lc=self.copy()
-    added_lc.add_spline(spline)
-    return added_lc
+    return self.copy().add_spline(spline)
 
-  def divide_by_spline(self,spline):
-    self.y=self.y/-spline(self.x)
-    self.ye=self.ye/spline(self.x)
+  def divide_by_spline(self,spline,negative=False):
+    if negative:
+      const=-1
+    else:
+      const=1
+    self.set_y(const*self.get_y()/spline(self.get_x()))
+    self.set_ye(self.get_ye()/spline(self.get_x()))
 
   def divided_by_spline(self,spline):
-    divided_lc=self.copy()
-    divided_lc.divide_by_spline(spline)
-    return divided_lc
+    return self.copy().divide_by_spline(spline)
 
   def mask(self,mask):
     if len(mask)!=self.get_length():
       raise dat.DataError('Mask of different length to lightcurve!')
-    self.x=self.x[mask]
-    self.y=self.y[mask]
-    self.ye=self.ye[mask]
+    self.set_x(self.get_x()[mask])
+    self.set_y(self.get_y()[mask])
+    self.set_ye(self.get_ye()[mask])
 
   def masked(self,mask):
-    masked_lc=self.copy()
-    masked_lc.mask(mask)
-    return masked_lc
+    return self.copy().mask(mask)
 
   # making selections on flux
 
   def flux_cut_between(self,lower,upper):
     if lower>upper:
       raise dat.DataError('Lower flux cut must >= upper flux cut!')
-    self.mask(np.logical_and(self.y>=lower,self.y<upper))
+    self.mask(np.logical_and(self.get_y()>=lower,self.get_y()<upper))
 
   def flux_cutted_between(self,lower,upper):
-    cut_lc=self.copy()
-    cut_lc.flux_cut_between(lower,upper)
-    return cut_lc
+    return self.copy().flux_cut_between(lower,upper)
 
   def flux_cut_above(self,limit):
     self.flux_cut_between(limit,np.inf)
 
   def flux_cutted_above(self,limit):
-    cut_lc=self.copy()
-    cut_lc.flux_cut_above(limit)
-    return cut_lc
+    return self.copy().flux_cut_above(limit)
 
   def flux_cut_below(self,limit):
     self.flux_cut_between(-np.inf,limit)
 
   def flux_cutted_below(self,limit):
-    cut_lc=self.copy()
-    cut_lc.flux_cut_below(limit)
-    return cut_lc
+    return self.copy().flux_cut_below(limit)
 
   def clip_percentile_range(self,lower,upper):
-    u_bound=np.percentile(self.y,upper)
-    l_bound=np.percentile(self.y,lower)
+    u_bound=np.percentile(self.get_y(),upper)
+    l_bound=np.percentile(self.get_y(),lower)
     self.flux_cut_between(self,l_bound,u_bound)
 
   def clipped_percentile_range(self,lower,upper):
-    clipped_lc=self.copy()
-    clipped_lc.clip_percentile_range(lower,upper)
-    return clipped_lc
+    return self.copy().clip_percentile_range(lower,upper)
+
 
   # Some basic statistical properties
 
   def get_min(self):
-    return np.min(self.y)
+    return np.min(self.get_y())
 
   def get_max(self):
-    return np.max(self.y)
+    return np.max(self.get_y())
 
   def get_mean(self):
-    return np.mean(self.y)
+    return np.mean(self.get_y())
 
   def get_std(self):
-    return np.std(self.y)
+    return np.std(self.get_y())
 
   def get_median(self):
-    return np.median(self.y)
+    return np.median(self.get_y())
 
   def get_range(self):
     return self.get_max()-self.get_min()
 
 class tess_lightcurve(lightcurve):
   def unpack_metadata(self):
-    self.objname=self.meta['name']
-    self.sector=self.meta['sector']
-    self.mission=self.meta['mission']
-    self.binsize=self.meta['binsize']
-    self.acceptable_gap=25 # allow a waaaay bigger data gap before a data gap is declared
-    abx=np.array(self.meta['bx'])
+    self.objname=self.get_meta('name')
+    self.sector=self.get_meta('sector')
+    self.mission=self.get_meta('mission')
+    self.set_binsize(self.get_meta('binsize'))
+    self.set_acceptable_gap(25) # allow a waaaay bigger data gap before a data gap is declared
+    abx=np.array(self.get_meta('bx'))
     with wr.catch_warnings():
       wr.filterwarnings('ignore',message='invalid value encountered in less_equal')
       wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
@@ -1307,19 +1298,19 @@ class tess_lightcurve(lightcurve):
          bgmask=np.logical_and(abx>=self.get_start_time(),abx<=self.get_end_time())
       else:
          bgmask=[]   # Should still be able to initialise a TESS lightcurve of length 0.  This matters for dynamical spectra
-    self.bx=abx[bgmask].astype(float)  # clipping bg lightcurve to same length as main lc, useful after calving
-    self.b=np.array(self.meta['b'])[bgmask].astype(float)
-    self.be=np.array(self.meta['be'])[bgmask].astype(float)
+    self.set_bx(abx[bgmask].astype(float))  # clipping bg lightcurve to same length as main lc, useful after calving
+    self.set_b(np.array(self.get_meta('b'))[bgmask].astype(float))
+    self.set_be(np.array(self.get_meta('be'))[bgmask].astype(float))
     self.t_units='BJD'
     self.y_units='e/s'
 
 class kepler_lightcurve(lightcurve):
   def unpack_metadata(self):
-    self.objname=self.meta['name']
-    self.mission=self.meta['mission']
-    self.binsize=self.meta['binsize']
-    self.acceptable_gap=100000
-    abx=np.array(self.meta['bx'])
+    self.objname=self.get_meta('name')
+    self.mission=self.get_meta('mission')
+    self.set_binsize(self.get_meta('binsize'))
+    self.set_acceptable_gap(100000)
+    abx=np.array(self.get_meta('bx'))
     with wr.catch_warnings():
       wr.filterwarnings('ignore',message='invalid value encountered in less_equal')
       wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
@@ -1327,20 +1318,20 @@ class kepler_lightcurve(lightcurve):
          bgmask=np.logical_and(abx>=self.get_start_time(),abx<=self.get_end_time())
       else:
          bgmask=[]   # Should still be able to initialise a Kepler lightcurve of length 0.  This matters for dynamical spectra
-    self.bx=abx[bgmask].astype(float)  # clipping bg lightcurve to same length as main lc, useful after calving
-    self.b=np.array(self.meta['b'])[bgmask].astype(float)
-    self.be=np.array(self.meta['be'])[bgmask].astype(float)
+    self.set_bx(abx[bgmask].astype(float))  # clipping bg lightcurve to same length as main lc, useful after calving
+    self.set_b(np.array(self.get_meta('b'))[bgmask].astype(float))
+    self.set_be(np.array(self.get_meta('be'))[bgmask].astype(float))
     self.t_units='BJD'
     self.y_units='e/s'
 
 class rxte_lightcurve(lightcurve):
   def unpack_metadata(self):
-    self.objname=self.meta['name']
-    self.mission=self.meta['mission']
-    self.binsize=self.meta['binsize']
-    self.gtis=self.meta['gtis']
-    self.min_channel=self.meta['min_channel']
-    self.max_channel=self.meta['max_channel']
+    self.objname=self.get_meta('name')
+    self.mission=self.get_meta('mission')
+    self.set_binsize(self.get_meta('binsize'))
+    self.gtis=self.get_meta('gtis')
+    self.min_channel=self.get_meta('min_channel')
+    self.max_channel=self.get_meta('max_channel')
     self.t_units='s'
     self.y_units='cts/s/PCU'
 
@@ -1524,6 +1515,11 @@ def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=None,meta_sep=':')
       ye.append(ein)
   f.close()
   return lightcurve(x,y,ye,meta=imeta)
+
+##############################################################################
+
+def get_lc_from_aavso(filename):
+  return get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=',')
 
 ##############################################################################
 
