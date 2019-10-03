@@ -50,6 +50,37 @@ class DataSet(object):
   def has(self,key):
     return key in self.get_contents()
 
+  # A generic null 'fit function' to prevent mysterious errors
+
+  def use_fit_function(self,x):
+    return self.get_specified_fit_function()(x)
+
+  def get_fit_function(self):
+    if 'fit_function' in self.get_contents():
+      return self.fit_function
+    else:
+      raise DataError('No fit function set!')
+
+  def get_fit_params(self):
+    if 'fit_params' in self.get_contents():
+      return self.fit_params
+    else:
+      raise DataError('No fit function set!')
+
+  def get_fit_params_e(self):
+    if 'fit_params_e' in self.get_contents():
+      return self.fit_params_e
+    else:
+      raise DataError('No fit function set!')
+
+  def get_specified_fit_function(self):
+    if 'fit_function' in self.get_contents():
+      def out_function(x):
+        return self.get_fit_function()(x,*self.get_fit_params())
+      return self.out_function
+    else:
+      raise DataError('No fit function set!')
+
 class TwoD_Dataframe(DataSet):
   def __init__(self,xvalues,yvalues,zvalues,meta={}):
     xlen=len(xvalues)

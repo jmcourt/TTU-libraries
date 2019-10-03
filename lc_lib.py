@@ -233,6 +233,14 @@ class lightcurve(dat.DataSet):
     spline=intp.interp1d(self.get_bx(),self.get_be(),kind=kind,fill_value=fill_value)
     return spline
 
+  # Function fitting
+
+  def fit(self,function,init):
+    self.fit_function=function
+    op=optm.curve_fit(function,self.get_x(),self.get_y(),init)
+    self.fit_params=op[0]
+    self.fit_params_e=np.sqrt(np.diag(op[1]))
+
   # Dump contents to a csv
 
   def dump(self,filename,data_sep=' ',meta_sep=':'):
@@ -259,7 +267,9 @@ class lightcurve(dat.DataSet):
     self.add_time(-start_time)
 
   def zeroed_time(self):
-    return self.copy().zero_time()
+    s=self.copy()
+    s.zero_time()
+    return s
 
   def add_time(self,time):
     self.set_x(self.get_x()+time)
@@ -268,7 +278,9 @@ class lightcurve(dat.DataSet):
       self.set_bx(self.get_bx()+time)
 
   def added_time(self,time):
-    return self.copy().add_time(time)
+    s=self.copy()
+    s.add_time(time)
+    return s
 
   def multiply_time(self,constant):
     self.set_x(self.get_x()*constant)
@@ -282,7 +294,9 @@ class lightcurve(dat.DataSet):
       self.set_ls_freqs(self.get_ls_freqs()/constant)
 
   def multiplied_time(self,constant):
-    return self.copy().multiply_time(constant)
+    s=self.copy()
+    s.multiply_time(constant)
+    return s
 
   def convert_days_to_s(self):
     self.multiply_time(86400)
@@ -293,16 +307,20 @@ class lightcurve(dat.DataSet):
     self.set_t_units('days')
 
   def converted_days_to_s(self):
-    return self.copy().convert_days_to_s()
+    s=self.copy()
+    s.convert_days_to_s()
+    return s
 
   def converted_s_to_days(self):
-    return self.copy().convert_s_to_days()
+    s=self.copy()
+    s.convert_s_to_days()
+    return s
 
   def shift_gtis(self,shift):
-    raise NotImplementedError    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
+    pass    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
 
   def multiply_gtis(self,constant):
-    raise NotImplementedError    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
+    pass    # Placeholder function to allow GTIs to be updated when data is renormed in objects such as RXTE lcs which store this information
 
   # Self-explanatory quick-and-dirty plot machine.  BG plot checks if bg data is available, and dies if not
 
@@ -918,7 +936,9 @@ class lightcurve(dat.DataSet):
       self.set_meta('sector','')
 
   def added_data(self,lc):
-    return self.copy().add_data(lc)
+    s=self.copy()
+    s.add_data(lc)
+    return s
 
   # Plot label generation
 
@@ -943,9 +963,9 @@ class lightcurve(dat.DataSet):
       wr.filterwarnings('ignore',message='invalid value encountered in less')
       wr.filterwarnings('ignore',message='invalid value encountered in greater_equal')
       mask=np.logical_and(self.get_x()>=stime,self.get_x()<etime)
-    self.set_x(self.get_x[mask])
-    self.set_y(self.get_y[mask])
-    self.set_ye(self.get_ye[mask])
+    self.set_x(self.get_x()[mask])
+    self.set_y(self.get_y()[mask])
+    self.set_ye(self.get_ye()[mask])
     if self.has('b'):
       with wr.catch_warnings():
         wr.filterwarnings('ignore',message='invalid value encountered in less')
@@ -956,7 +976,9 @@ class lightcurve(dat.DataSet):
       self.set_be(self.get_be()[mask])
 
   def calved(self,stime,etime):
-    return self.copy().calve(stime,etime)
+    s=self.copy()
+    s.calve(stime,etime)
+    return s
 
   def calve_by_length(self,length):
     self.set_x(self.get_x()[:length])
@@ -964,7 +986,9 @@ class lightcurve(dat.DataSet):
     self.set_ye(self.get_ye()[:length])
 
   def calved_by_length(self,length):
-    return self.copy().calve_by_length(length)
+    s=self.copy()
+    s.calve_by_length(length)
+    return s
 
   # Attempts to detrend the data for a given window size.
 
@@ -972,11 +996,13 @@ class lightcurve(dat.DataSet):
     if method==None:
       method='time_mean'
       print('No smoothing method specified; using Time Mean')
-    newy=self.get_y-smart_smooth(self,window_size,method)
+    newy=self.get_y()-smart_smooth(self,window_size,method)
     self.set_y(newy)
 
   def detrended(self,window_size,method=None):
-    return self.copy().detrend(window_size,method)
+    s=self.copy()
+    s.detrend(window_size,method)
+    return s
 
   def plot_with_trend(self,window_size,method=None,output=None,block=False,**kwargs):
     ax=fi.filter_axes(output)
@@ -995,18 +1021,32 @@ class lightcurve(dat.DataSet):
     self.set_y(newy)
 
   def smoothed(self,window_size,method=None):
-    return self.copy().smooth(window_size,method)
+    s=self.copy()
+    s.smooth(window_size,method)
+    return s
+
+  # returns 2 lightcurves: the Smoothed and the Detrended
+
+  def decomposed(self,window_size,method=None):
+    smoothed_y=smart_smooth(self,window_size,method)
+    s1=self.copy()
+    s2=self.copy()
+    s1.set_y(smoothed_y)
+    s2.set_y(s2.get_y()-smoothed_y)
+    return s1,s2
 
   # Shuffler; returns the y,ye pairs in a random order
 
   def shuffle(self):
     indices=np.arange(self.get_length(),dtype=int)
     rn.shuffle(indices)
-    self.set_y(self.get_y[indices])
-    self.set_ye(self.get_ye[indices])
+    self.set_y(self.get_y()[indices])
+    self.set_ye(self.get_ye()[indices])
 
   def shuffled(self):
-    return self.copy().shuffle()
+    s=self.copy()
+    s.shuffle()
+    return s
 
   # Bin evener & spline evener: forces data into bins of even width!
   def even_bins(self,binsize=None):
@@ -1020,15 +1060,17 @@ class lightcurve(dat.DataSet):
       N=np.sum(mask)
       if N==0:
         continue
-      newy[i]=np.mean(self.get_y[mask])
-      newe[i]=np.sqrt(np.sum(self.get_ye[mask]**2))/N
+      newy[i]=np.mean(self.get_y()[mask])
+      newe[i]=np.sqrt(np.sum(self.get_ye()[mask]**2))/N
     self.set_x(newx)
     self.set_y(newy)
     self.set_ye(newe)
     self.set_binsize(binsize)
 
   def evened_bins(self,binsize=None):
-    return self.copy().even_bins(binsize)
+    s=self.copy()
+    s.even_bins(binsize)
+    return s
 
   def spline_even(self,binsize=None):
     if binsize==None: binsize=self.get_binsize()
@@ -1065,7 +1107,9 @@ class lightcurve(dat.DataSet):
     self.set_data_even_flag(True)
 
   def spline_evened(self,binsize=None):
-    return self.copy().spline_even(binsize)
+    s=self.copy()
+    s.spline_even(binsize)
+    return s
 
   # Rebinning algorithms.  How was this not already a thing!?
 
@@ -1076,7 +1120,9 @@ class lightcurve(dat.DataSet):
     self.set_ye(newye)
 
   def rebinned(self,time):
-    return self.copy().rebin(time)
+    s=self.copy()
+    s.rebin(time)
+    return s
 
   def rebin_by_factor(self,factor):
     newx,newy,newye=dat.rebin_by_factor(factor,self.get_x(),self.get_y(),ye=self.get_ye())
@@ -1085,7 +1131,9 @@ class lightcurve(dat.DataSet):
     self.set_ye(newye)
 
   def rebinned_by_factor(self,factor):
-    return self.copy().rebin_by_factor(factor)
+    s=self.copy()
+    s.rebin_by_factor(factor)
+    return s
 
   # Eww yuck get rid of magnitude measurements
 
@@ -1099,7 +1147,9 @@ class lightcurve(dat.DataSet):
     self.set_y_units('Vega')
 
   def demagnituded(self):
-    return self.copy().demagnitude()
+    s=self.copy()
+    s.demagnitude()
+    return s
 
   # Flux phase diagrams!
 
@@ -1174,7 +1224,9 @@ class lightcurve(dat.DataSet):
       wr.warn('X-axis is already in NCycles!')
       return self
     else:
-      return self.copy().set_x_axis_to_Ncycles(period)
+      s=self.copy()
+      s.set_x_axis_to_Ncycles(period)
+      return s
 
   def phase_fold(self,period,phase_bins=100,standev_errors=False):
     if self.is_folded():
@@ -1194,7 +1246,9 @@ class lightcurve(dat.DataSet):
     if self.is_folded():
       wr.warn('Already folded!  Skipping!')
       return self
-    return self.copy().phase_fold(period,phase_bins,standev_errors=standev_errors)
+    s=self.copy()
+    s.phase_fold(period,phase_bins,standev_errors=standev_errors)
+    return s
 
   # Varifolder from PANTHEON!  Probably super unstable!
 
@@ -1220,7 +1274,9 @@ class lightcurve(dat.DataSet):
     if self.is_folded():
       wr.warn('Already folded!  Skipping!')
       return self
-    return self.copy().varifold(zeros,phase_bins,standev_errors=standev_errors)
+    s=self.copy()
+    s.varifold(zeros,phase_bins,standev_errors=standev_errors)
+    return s
 
   # Gets the period at which the dispersion in a folded lightcurve's phase bins is minimum.  One way of working out a period
 
@@ -1262,19 +1318,25 @@ class lightcurve(dat.DataSet):
     self.set_ye(self.get_ye()*constant)
 
   def multiplied_by_constant(self,constant):
-    return self.copy().multiply_by_constant(constant)
+    s=self.copy()
+    s.multiply_by_constant(constant)
+    return s
 
   def add_constant(self,constant):
     self.set_y(self.get_y()+constant)
 
   def added_constant(self,constant):
-    return self.copy().add_constant(constant)
+    s=self.copy()
+    s.add_constant(constant)
+    return s
 
   def add_spline(self,spline):
     self.set_y(self.get_y()+spline(self.get_x()))
 
   def added_spline(self,spline):
-    return self.copy().add_spline(spline)
+    s=self.copy()
+    s.add_spline(spline)
+    return s
 
   def divide_by_spline(self,spline,negative=False):
     if negative:
@@ -1285,7 +1347,9 @@ class lightcurve(dat.DataSet):
     self.set_ye(self.get_ye()/spline(self.get_x()))
 
   def divided_by_spline(self,spline):
-    return self.copy().divide_by_spline(spline)
+    s=self.copy()
+    s.divide_by_spline(spline)
+    return s
 
   def mask(self,mask):
     if len(mask)!=self.get_length():
@@ -1295,7 +1359,9 @@ class lightcurve(dat.DataSet):
     self.set_ye(self.get_ye()[mask])
 
   def masked(self,mask):
-    return self.copy().mask(mask)
+    s=self.copy()
+    s.mask(mask)
+    return s
 
   # making selections on flux
 
@@ -1305,19 +1371,25 @@ class lightcurve(dat.DataSet):
     self.mask(np.logical_and(self.get_y()>=lower,self.get_y()<upper))
 
   def flux_cutted_between(self,lower,upper):
-    return self.copy().flux_cut_between(lower,upper)
+    s=self.copy()
+    s.flux_cut_between(lower,upper)
+    return s
 
   def flux_cut_above(self,limit):
     self.flux_cut_between(limit,np.inf)
 
   def flux_cutted_above(self,limit):
-    return self.copy().flux_cut_above(limit)
+    s=self.copy()
+    s.flux_cut_above(limit)
+    return s
 
   def flux_cut_below(self,limit):
     self.flux_cut_between(-np.inf,limit)
 
   def flux_cutted_below(self,limit):
-    return self.copy().flux_cut_below(limit)
+    s=self.copy()
+    s.flux_cut_below(limit)
+    return s
 
   def clip_percentile_range(self,lower,upper):
     u_bound=np.percentile(self.get_y(),upper)
@@ -1325,8 +1397,9 @@ class lightcurve(dat.DataSet):
     self.flux_cut_between(self,l_bound,u_bound)
 
   def clipped_percentile_range(self,lower,upper):
-    return self.copy().clip_percentile_range(lower,upper)
-
+    s=self.copy()
+    s.clip_percentile_range(lower,upper)
+    return s
 
   # Some basic statistical properties
 
@@ -1642,6 +1715,8 @@ def smart_smooth(lc,parameter,method): # takes a lightcurve-like object
   elif method=='time_mean':
     return time_mean_smooth(lc,parameter)
   elif method=='percentile_clipping_time_mean':
+    return percentile_clipping_time_mean_smooth(lc,parameter)
+  elif method=='pcm':
     return percentile_clipping_time_mean_smooth(lc,parameter)
   elif method=='loess':
     return loess_smooth(lc,parameter)
