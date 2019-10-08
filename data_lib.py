@@ -244,11 +244,14 @@ def rebin(binsize,x,y,ye=None):
   yeb[-1]=(np.sqrt(yeb[-1]))/binct
   return np.array(xb),np.array(yb),np.array(yeb)
 
-def rebin_by_factor(bin_factor,x,y,ye=None):
+def rebin_by_factor(bin_factor,x,y,xe=None,ye=None):
   x=np.array(x)
   y=np.array(y)
+  if type(xe)==type(None):
+    xe=[0]*len(x)
   if type(ye)==type(None):
     ye=[0]*len(x)
+  xe=np.array(xe)
   ye=np.array(ye)
   bin_factor=int(bin_factor)
   if bin_factor>len(x):
@@ -256,25 +259,30 @@ def rebin_by_factor(bin_factor,x,y,ye=None):
   x_overshoot=len(x)%bin_factor
   masked_xs=[0]*bin_factor
   masked_ys=[0]*bin_factor
+  masked_xes=[0]*bin_factor
   masked_yes=[0]*bin_factor
   if x_overshoot>0:   # cropping out data which would fall outside of any of the new bins
     x=x[:-x_overshoot]
     y=y[:-x_overshoot]
+    xe=xe[:-x_overshoot]
     ye=ye[:-x_overshoot]
   index_range=np.array(range(len(x)))
   for i in range(bin_factor):
     mask=index_range%bin_factor==i
     masked_xs[i]=x[mask]
     masked_ys[i]=y[mask]
+    masked_xes[i]=xe[mask]
     masked_yes[i]=ye[mask]
   xmatrix=np.vstack(masked_xs)
   ymatrix=np.vstack(masked_ys)
+  xematrix=np.vstack(masked_xes)
   yematrix=np.vstack(masked_yes)
   binned_x=np.mean(xmatrix,axis=0)
   binned_y=np.mean(ymatrix,axis=0)
+  binned_xe=np.sqrt(np.sum(xematrix**2,axis=0))/bin_factor
   binned_ye=np.sqrt(np.sum(yematrix**2,axis=0))/bin_factor
 
-  return binned_x,binned_y,binned_ye
+  return binned_x,binned_y,binned_xe,binned_ye
 
 def log_rebin(log_res,x,y,ye=None):
   # shamelessly repurposed from pan_lib
@@ -319,3 +327,32 @@ def log_rebin(log_res,x,y,ye=None):
 def gaussian_bootstrap(y,ye):
   assert len(y)==len(ye)
   return rn.normal(loc=y,scale=ye)
+
+# --------------- Plotting methods -----------------------
+
+def arrow_plot(ax,x,y,color='blue',quiver_thickness=0.005,edgecolor=None,facecolor=None,marker='o',**kwargs):
+    """arrow_plot
+    
+    Plots a series of points connected by arrows at the half-way point.
+    
+    Oddly, `plot` uses a different scale for `linewidth` than `quiver` does for `width`, so this just uses `quiver` twice - once
+    for the ``background'' lines, and once to place arrows in the middle. Thickness and color are set with kwargs.
+    
+    You can plot this on an axis/subplot, or you can pass `matplotlib.pyplot` or whatever and it'll work too.
+
+    - David Williamson 2019, see https://github.com/Astrokiwi/arrow_plot
+    """
+    if edgecolor is None:
+        edgecolor=color
+    if facecolor is None:
+        facecolor=color
+    dx = x[1:]-x[:-1]
+    dy = y[1:]-y[:-1]
+    ax.quiver(x[:-1],y[:-1],dx,dy,
+                scale=1,scale_units='xy',angles='xy',
+                headwidth=0.,headlength=0.,headaxislength=0.,
+                width=quiver_thickness,color=color,**kwargs)
+    ax.quiver(x[:-1],y[:-1],dx/2,dy/2,
+                scale=1,scale_units='xy',angles='xy',
+                width=quiver_thickness,color=color,**kwargs)
+    ax.scatter(x,y,marker=marker,edgecolor=color,facecolor=color,**kwargs)

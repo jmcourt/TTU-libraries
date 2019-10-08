@@ -146,6 +146,16 @@ class lightcurve(dat.DataSet):
     if self.is_empty():
       return 0
     return self.get_x()[-1]
+
+  def get_max_time(self):
+    if self.is_empty():
+      return 0
+    return self.get_x()[np.argmax(self.get_y())]
+  def get_min_time(self):
+    if self.is_empty():
+      return 0
+    return self.get_x()[np.argmin(self.get_y())]
+
   def get_title(self):
     return self.objname
 
@@ -372,7 +382,7 @@ class lightcurve(dat.DataSet):
     ax=fi.filter_axes(output)
 
     if title==True:
-      ax.set_title(self.get_title()+' Quick Plot')
+      ax.set_title(self.get_title()+' LC Plot')
     elif title==False:
       pass
     else:
@@ -992,19 +1002,16 @@ class lightcurve(dat.DataSet):
 
   # Attempts to detrend the data for a given window size.
 
-  def detrend(self,window_size,method=None):
-    if method==None:
-      method='time_mean'
-      print('No smoothing method specified; using Time Mean')
+  def detrend(self,window_size,method='None'):
     newy=self.get_y()-smart_smooth(self,window_size,method)
     self.set_y(newy)
 
-  def detrended(self,window_size,method=None):
+  def detrended(self,window_size,method='None'):
     s=self.copy()
     s.detrend(window_size,method)
     return s
 
-  def plot_with_trend(self,window_size,method=None,output=None,block=False,**kwargs):
+  def plot_with_trend(self,window_size,method='None',output=None,block=False,**kwargs):
     ax=fi.filter_axes(output)
     smoothed_lc=self.smoothed(window_size,method)
     self.quickplot(output=ax,**kwargs)
@@ -1013,21 +1020,18 @@ class lightcurve(dat.DataSet):
 
   # smooths the data for a given window size.  Sorta the opposite of above.
 
-  def smooth(self,window_size,method=None):
-    if method==None:
-      method='time_mean'
-      print('No smoothing method specified; using Time Mean')
+  def smooth(self,window_size,method='None'):
     newy=smart_smooth(self,window_size,method)
     self.set_y(newy)
 
-  def smoothed(self,window_size,method=None):
+  def smoothed(self,window_size,method='None'):
     s=self.copy()
     s.smooth(window_size,method)
     return s
 
   # returns 2 lightcurves: the Smoothed and the Detrended
 
-  def decomposed(self,window_size,method=None):
+  def decomposed(self,window_size,method='None'):
     smoothed_y=smart_smooth(self,window_size,method)
     s1=self.copy()
     s2=self.copy()
@@ -1125,7 +1129,7 @@ class lightcurve(dat.DataSet):
     return s
 
   def rebin_by_factor(self,factor):
-    newx,newy,newye=dat.rebin_by_factor(factor,self.get_x(),self.get_y(),ye=self.get_ye())
+    newx,newy,null,newye=dat.rebin_by_factor(factor,self.get_x(),self.get_y(),ye=self.get_ye())
     self.set_x(newx)
     self.set_y(newy)
     self.set_ye(newye)
@@ -1280,7 +1284,7 @@ class lightcurve(dat.DataSet):
 
   # Gets the period at which the dispersion in a folded lightcurve's phase bins is minimum.  One way of working out a period
 
-  def get_minimum_dispersion_period(self,estimate,phase_bins=100,max_iterations=7,variance=0.1,error=np.inf):
+  def get_minimum_dispersion_period(self,estimate,phase_bins=100,max_iterations=7,variance=0.1,overwrite=True,error=np.inf):
     x=[];y=[]
     def min_dispersion_test_function(p):
       test_lc=self.phase_folded(p,phase_bins=phase_bins,standev_errors=True)
@@ -1296,20 +1300,109 @@ class lightcurve(dat.DataSet):
         wr.simplefilter("ignore")
         ests=optm.curve_fit(func.gaussian,x,y,invals)
     except RuntimeError:
+      if overwrite:
+        self.set_period(estimate)
       return estimate,error  # return a value if the parameter space becomes non-gaussian
     check0=np.abs(ests[0][0])>3*np.sqrt(np.abs(np.diag(ests[1])))[0]
     check1=np.abs(ests[0][1])>3*np.sqrt(np.abs(np.diag(ests[1])))[1]
     check2=np.abs(ests[0][2])>3*np.sqrt(np.abs(np.diag(ests[1])))[2]
     check3=np.abs(ests[0][3])>3*np.sqrt(np.abs(np.diag(ests[1])))[3]
     if not (check0 and check1 and check2 and check3): # also return value if gaussian is fit but poorly constrained
+      if overwrite:
+        self.set_period(estimate)
       return estimate,error
     estimate=ests[0][1]
     error=np.sqrt(np.diag(ests[1])[1])
     if -np.log10(variance)<=max_iterations:
       estimate,error=self.get_minimum_dispersion_period(estimate,phase_bins=phase_bins,max_iterations=max_iterations,variance=0.1*variance,error=error)
+    if overwrite:
+      self.set_period(estimate)
     return estimate,error
     
-    
+  # Eclipse properties!  Great for those Eclipse Depth/Out-of-Eclipse-Flux plots!
+
+  def get_eclipse_properties(self,period=None,phase=None,sample_halfwidth=0.1,pcm_low=20,pcm_high=95):
+    if self.is_folded():
+      raise dat.DataError('Cannot find eclipse properties of folded data!')
+    if not self.x_axis_is_phase():
+      if period==None:
+        if self.get_period()==0:
+          print(self.get_period())
+          raise dat.DataError('Must specify period or convert x-axis to NCycles!')
+        else:
+          period=self.get_period()
+          sample_lc=self.setted_x_axis_to_Ncycles(period)
+      else:
+        sample_lc=self.copy()
+    else:
+      sample_lc=self.setted_x_axis_to_Ncycles(period)
+    smo,det=sample_lc.decomposed((1,pcm_low,pcm_high),'pcm')
+    del sample_lc
+    if phase==None:
+      phase=det.phase_folded(1).get_min_time()
+    smo.add_time(-phase)
+    det.add_time(-phase)
+    eclipse_depths=[]
+    eclipse_widths=[]
+    eclipse_contin=[] # continuum at eclipse, e.g. out-of-eclipse flux
+
+    eclipse_depths_e=[]
+    eclipse_widths_e=[]
+    eclipse_contin_e=[]
+
+    def fit_function(x,A,sig):
+      return func.gaussian_based(x,A,0,sig)
+
+    for t in range(int(smo.get_start_time())+1,int(smo.get_end_time())+1):
+      cl_det=det.calved(t-sample_halfwidth,t+sample_halfwidth).added_time(-t)
+      if cl_det.is_empty():
+        continue
+      cl_smo=smo.calved(t-sample_halfwidth,t+sample_halfwidth).added_time(-t)
+      try:
+        fit=optm.curve_fit(fit_function,cl_det.get_x(),cl_det.get_y(),(cl_det.get_min(),sample_halfwidth))
+      except:
+        continue
+      fit_v=fit[0]
+      fit_e=np.sqrt(np.diag(fit[1]))
+
+      eclipse_depths.append(fit_v[0])
+      eclipse_widths.append(fit_v[1])
+      eclipse_contin.append(cl_smo.get_mean())
+
+      eclipse_depths_e.append(fit_e[0])
+      eclipse_widths_e.append(fit_e[1])
+      eclipse_contin_e.append(cl_smo.get_error_of_mean())
+
+    self.eclipse_depths=-np.array(eclipse_depths)
+    self.eclipse_widths=np.array(eclipse_widths)
+    self.eclipse_contin=np.array(eclipse_contin)
+
+    self.eclipse_depths_e=np.array(eclipse_depths_e)
+    self.eclipse_widths_e=np.array(eclipse_widths_e)
+    self.eclipse_contin_e=np.array(eclipse_contin_e)
+
+  def plot_eclipse_depths_continuum_diagram(self,bin_factor=1,output=None,block=False,arrowplot=False,plot1_1=True,quiescent_percentile=50,**kwargs):
+    if not self.has('eclipse_depths'):
+      raise dat.DataError('Must prepare eclipse properties before plotting EDC diagram!')
+    raw_x=self.eclipse_contin
+    raw_y=self.eclipse_depths
+    raw_xe=self.eclipse_contin_e
+    raw_ye=self.eclipse_depths_e
+    px,py,pxe,pye=dat.rebin_by_factor(bin_factor,raw_x,raw_y,raw_xe,raw_ye)
+    ax=fi.filter_axes(output)
+    ax.errorbar(px,py,xerr=pxe,yerr=pye,**kwargs)
+    if arrowplot:
+      dat.arrow_plot(ax,px,py,zorder=2)
+    if plot1_1:
+      q_lim=np.percentile(raw_x,quiescent_percentile)
+      print('QLim='+str(q_lim))
+      fit_x=raw_x[raw_x<q_lim]
+      fit_y=raw_y[raw_x<q_lim]
+      def fit_func(x,c):
+        return x+c
+      fit_c=optm.curve_fit(fit_func,fit_x,fit_y,[0])[0][0]
+      ax.plot([min(raw_x),max(raw_x)],[min(raw_x)+fit_c,max(raw_x)+fit_c],'k--',zorder=-1)
+    pl.show(block=block)
 
   # Some super basic arithmetic functions for manipulating lightcurves, i.e. "add a constant", "divide by a constant"
 
@@ -1411,6 +1504,9 @@ class lightcurve(dat.DataSet):
 
   def get_mean(self):
     return np.mean(self.get_y())
+
+  def get_error_of_mean(self):
+    return np.sum(self.get_ye()**2)/self.get_length()
 
   def get_std(self):
     return np.std(self.get_y())
@@ -1706,9 +1802,12 @@ def is_overlap(user_range,test_ranges):
 
 # ======= Smoothing functions =======
 
-def smart_smooth(lc,parameter,method): # takes a lightcurve-like object
+def smart_smooth(lc,parameter,method='None'): # takes a lightcurve-like object
   method=method.lower()
-  if method=='savgol':
+  if method=='none':
+    wr.warn('No smoothing method specified: using time mean!')
+    return time_mean_smooth(lc,parameter)
+  elif method=='savgol':
     return smart_savgol(lc,parameter)
   elif method=='time_median':
     return time_median_smooth(lc,parameter)
