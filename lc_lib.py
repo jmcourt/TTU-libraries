@@ -7,7 +7,6 @@ from   matplotlib import gridspec as gs
 from   matplotlib import pyplot as pl
 import numpy as np
 import random as rn
-from   requests import exceptions as rx
 from   scipy import fftpack as fou
 from   scipy import interpolate as intp
 from   scipy import optimize as optm
@@ -27,6 +26,7 @@ except ImportError:
 
 try:
   from astroquery.simbad import Simbad
+  from requests          import exceptions as rx
   imported_astroquery=True
 except:
   wr.warn('No Astroquery module found!  Unable to query Simbad for object identifiers!')
