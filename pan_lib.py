@@ -195,24 +195,17 @@ class mjit(object):
 def argcheck(x,y):
 
    '''Argument Checker
-
    Description:
-
     Takes a list (of arguments passed into a script), and a value representing the smallest allowable
     number of arguments.  If the length of the list is smaller than the criterion, an error is returned
     and the script is killed.
-
    Inputs:
-
     x - LIST   : The list of arguments passed into the current working script, i.e. x=sys.argv.
     y - INTEGER: The minimum allowable number of arguments.  Caution; if called from bash, sys.argv
                  returns the function call as the x[0] element, so y is 1 greater than the number
                  of user inputs.
-
    Outputs:
-
     [none]
-
    -J.M.Court, 2014'''
 
    if len(x)<y:
@@ -227,27 +220,20 @@ def argcheck(x,y):
 def binify(x,y,ye,binsize):                                               # Defining 'binify' subscript
 
    '''Binify
-
    Description:
-
     Takes a 2-dimenstional set of data which has already been evenly binned on the x-axis, and re-bins
     it into larger, evenly spaced bins on the x-axis.
-
    Inputs:
-
     x       -  LIST: The x-values of the two-dimensional data.
     y       -  LIST: The y-values of the two-dimensional data, must be the same length as x.
     ye      -  LIST: The errors associated with the y-values of the two-dimensional data, must be the
                      same length as x and y.
     binsize - FLOAT: the size of the new x-axis bins in which to re-bin the data.
-
    Outputs:
-
     xb      -  LIST: The re-binned x-values of the two-dimensional data, i.e. an array of the left-hand
                      edges of the new bins.
     yb      -  LIST: The re-binned y-values of the two-dimensional data.
     yeb     -  LIST: The errors associated with the rebinned y-values of the two-dimensional data.
-
    -J.M.Court, 2014'''
 
    binlx=binsize*np.floor(x[0]/binsize)                                   # Initialising 'bin lowest x', or the lowest x value of the current bin
@@ -285,22 +271,15 @@ def binify(x,y,ye,binsize):                                               # Defi
 def boolval(data,reverse=True):
 
    '''Boolean Evaluator
-
    Description:
-
     Given a list of Boolean values, interprets them as binary and returns the corresponding integer.
     By default reads lists as having the highest-value digit first.
-
    Inputs:
-
     data    - LIST: a list of lists Boolean values.
     reverse - BOOL: If set to False, then the Boolean strings will be interpreted as binaries with the
                     lowest value (1) first.
-
    Outputs:
-
     data    - LIST: the integer values represented by 'data' if its values are interpreted as binary.
-
    -J.M.Court, 2015'''
 
    keyr=range(len(data[0]))                                               # Set up the 'key range' to convert Bool list into int
@@ -377,26 +356,19 @@ def calcloop(flux,color,fluxe,colore):
 def circfold(x,y,t,pcoords=True):
 
    '''Circular folder
-
    Description:
-
     Circularly folds data by converting the x array into an array of phase angles between 0 and 2pi
     and the y array into an array of radial distances.  The coordinates of these points are then
     returned in Cartesian or Polar co-ordinates, as specified by the user.
-
    Inputs:
-
     x      - ARRAY: The x (time) co-ordinates of the data.
     y      - ARRAY: The y co-ordinates of the data.
     t      - FLOAT: The period over which the data is to be folded.
     pcoord -  BOOL: [Optional: Default=True] If set to true, the output co-ordinates will be theta, r
                     as in polar co-ordinates.  If set to false, the output co-ordinates will be x, y
                     as in Cartesian co-ordinates.
-
    Outputs:
-
     See inputs: pcoord
-
    -J.M.Court, 2015'''
 
    mult=(2*pi)/float(t)
@@ -451,19 +423,12 @@ def ccor(data1,data2):
 def eddington(M):
 
    '''Eddington
-
    Description:
-
     Returns the Eddington Limit for a given black hole mass, assuming Hydrogen accreta.
-
    Inputs:
-
     M - FLOAT: The mass of the black hole in solar masses
-
    Outputs:
-
     L - FLOAT: The Eddington Luminosity in ergs/s
-
    -J.M.Court, 2016'''
 
    return 1.26E38*M
@@ -476,19 +441,12 @@ def eddington(M):
 def eqrange(array):
 
    '''Equal Length Array
-
    Description:
-
     Creates a range with an equal length to that of the array or list given as an argument
-
    Inputs:
-
     array - ARRAYLIKE: The array to be used as comparison.
-
    Outputs:
-
     A range with equal length to the input
-
    -J.M.Court, 2015'''
 
    return range(len(array))
@@ -501,24 +459,17 @@ def eqrange(array):
 def eval_burst(t,y):
 
    '''Evaluate Burst
-
    Description:
-
     Takes a piece of data and its associated time array, and treats it as a single 'burst'-like pattern.
     Returns the peak flux, peak time, rise time, fall time of this burst.  Works best with Get_Bursts.
-
    Inputs:
-
     t         - ARRAY: The t (time) co-ordinates of the data.
     y         - ARRAY: The y co-ordinates of the data.
-
    Outputs:
-
     peak      - FLOAT: The highest y-value in the burst
     peak_time - FLOAT: The time at which the peak occurs
     rise_time - FLOAT: The time between the start of the burst and its peak
     fall_time - FLOAT: The time between the peak of the burst and its end
-
    '''
 
    peak=max(y)
@@ -535,24 +486,17 @@ def eval_burst(t,y):
 def filenamecheck(filename,validext,continu=False):
 
    '''Filename Checker
-
    Description:
-
     Takes a filename and a string representing the expected file extension.  If the extension of the
     file does not match expectations, either kill the script or return 'False'.
-
    Inputs:
-
     filename - STRING: The filename to be checked.
     validext - STRING: The extenstion expected for the file (WITHOUT the leading '.')
     continu  -   BOOL: [Optional: Default=False] If True, returns a value of False for an incorrect
                        file extension.  If False (default), kills the script upon finding an
                        incorrect file extension.
-
    Outputs:
-
     iscorr   -   BOOL: True if the file has the correct extension, False otherwise
-
    -J.M.Court, 2015'''
 
    flext=(filename.split('.')[-1])
@@ -573,15 +517,11 @@ def filenamecheck(filename,validext,continu=False):
 def foldify(t,y,ye,period,binsize,phres=None,name='',compr=False,verb=True):
 
    '''Foldify
-
    Description:
-
     Folds a two-dimensional set of data over a period in the first dimension using the folding script
     which is provided in PyAstronomy.  Also calculates how much the peak-trough difference of the
     data has been compressed by the fold, and tells the user.
-
    Inputs:
-
     t       -   LIST: The t- or x-values of the two-dimensional data.  The period to be folded over
                       is a period in this dimension.
     y       -   LIST: The y-values of the two-dimensional data, must be the same length as x.
@@ -596,15 +536,12 @@ def foldify(t,y,ye,period,binsize,phres=None,name='',compr=False,verb=True):
     compr   -   BOOL: [Optional: Default=False] if set True, gives a fourth output which is the amount
                       by which the min-max difference of the data-set was compressed by folding.
     verb    -   BOOL: [Optional: Default=True] if set false, suppresses all non-error text output.
-
    Outputs:
-
     newt    -  LIST: A clipped version of the input t which now only corresponds to one period.
     newy    -  LIST: The folded y-values of the two-dimensional data for one period.
     newye   -  LIST: The errors associated with the folded y-values of the two-dimensional data for
                      one period.
     compr   - FLOAT: see 'compr' input option
-
    -J.M.Court, 2015'''
 
    try:
@@ -660,14 +597,10 @@ def foldify(t,y,ye,period,binsize,phres=None,name='',compr=False,verb=True):
 def fold_bursts(times,data,q_lo=50,q_hi=90,do_smooth=False,alg='cubic spline',savgol=5):
 
    '''Return Phases Using Bursts as Reference Points
-
    Description:
-
     Takes a lightcurve and identifies 'bursts' in the data.  The peak of each burst is considered
     to be at zero phase, and all other points are assigned phases by linearly interpolating between them.
-
    Inputs:
-
     data       - ARRAY: The data in which bursts are sought.
     q_low      - FLOAT: [Optional: Default=30] The percentile value of the data which will be used as
                         the low-pass threshold.  This threshold determines the edges of already-located
@@ -684,12 +617,8 @@ def fold_bursts(times,data,q_lo=50,q_hi=90,do_smooth=False,alg='cubic spline',sa
     smooth     -  BOOL: [Optional: Default=False] Apply a Savitsky-Golay Filter to smooth the lightcurve
                         before fetching peaks.
     alg        -STRING: [Optional: Default='cubic spline'] The algorithm to use to obtain peaks.
-
-
    Outputs:
-
     burst_locs -  LIST: A list of tuples containing the start and end indices of each burst.
-
    -J.M.Court, 2015'''
 
    assert len(times)==len(data)
@@ -736,15 +665,11 @@ def gauss(mean,standev,x):
 def get_bursts(data,q_lo=50,q_hi=90,just_peaks=False,smooth=False,savgol=5,alg='cubic spline',times=None):
 
    '''Get Bursts
-
    Description:
-
     Takes a lightcurve and identifies 'bursts' in the data; short, discrete regions of increased flux.
     Returns the locations of all peaks identified as a list of tuples, each of which consist of two
     integers which correspond to the indices of the start and end of a peak in the original data.
-
    Inputs:
-
     data       - ARRAY: The data in which bursts are sought.
     q_low      - FLOAT: [Optional: Default=50] The percentile value of the data which will be used as
                         the low-pass threshold.  This threshold determines the edges of already-located
@@ -762,12 +687,8 @@ def get_bursts(data,q_lo=50,q_hi=90,just_peaks=False,smooth=False,savgol=5,alg='
     alg        -STRING: [Optional: Default='cubic spline'] The algorithm to use to obtain peaks.
     times      - ARRAY: [Optional: Default=None] If 'load' selected for algorithm, user must also give the
                         time array associated with the data.
-
-
    Outputs:
-
     burst_locs -  LIST: A list of tuples containing the start and end indices of each burst.
-
    -J.M.Court, 2015'''
 
 
@@ -848,16 +769,12 @@ def get_bursts(data,q_lo=50,q_hi=90,just_peaks=False,smooth=False,savgol=5,alg='
 def get_bursts_windowed(data,windows,q_lo=50,q_hi=90,smooth=False):
 
    '''Get Bursts
-
    Description:
-
     Takes a lightcurve and identifies 'bursts' in the data; short, discrete regions of increased flux.
     Returns the locations of all peaks identified as a list of tuples, each of which consist of two
     integers which correspond to the indices of the start and end of a peak in the original data.
     Currently can only return the location of all burst peaks.
-
    Inputs:
-
     data       - ARRAY: The data in which bursts are sought.
     windows    -   INT: The number of windows into which to divide the data
     q_low      - FLOAT: [Optional: Default=50] The percentile value of the data which will be used as
@@ -871,11 +788,8 @@ def get_bursts_windowed(data,windows,q_lo=50,q_hi=90,smooth=False):
     smooth     -  BOOL: [Optional: Default=False] If set to true, applies a univariate spline to the data
                         to smooth it.
     savgol     -   INT: [Optional: Default=1] The window size for the Savitsky-Golay filter
-
    Outputs:
-
     burst_locs -  LIST: A list of tuples containing the peak of each burst.
-
    -J.M.C.Court, 2016'''
 
    windows=int(windows)
@@ -899,23 +813,16 @@ def get_bursts_windowed(data,windows,q_lo=50,q_hi=90,smooth=False):
 def get_dip(data,start,finish,smooth=False,savgol=1):
 
    '''Get Dips
-
    Description:
-
     Returns the index of the lowest value between two given points in a dataset
-
    Inputs:
-
     data    - LIST:  The dataset in which a trough is to be found
     start   -  INT:  The index of the startpoint of the user-defined sub-range
     finish  -  INT:  The index of the endpoint of the user-defined sub-range
     smooth  -  BOOL: [Optional: Default=False] If set to true, applies a univariate spline to the data
                      to smooth it.
-
    Outputs:
-
     key_col -  INT: The index of the lowest value in the user-defined sub-range
-
    -J.M.Court, 2015'''
 
    data=np.array(data)
@@ -937,13 +844,9 @@ def get_dip(data,start,finish,smooth=False,savgol=1):
 def get_phases(data,windows=1,q_lo=20,q_hi=90):
 
    '''Get Phases
-
    Description:
-
     Given a set of data points evenly spaced in time, returns the phase coordinate of each point.
-
    Inputs:
-
     data   -  ARRAY: The data in which bursts are sought.
     windows -   INT: [Optional: Default=1] The number of windows into which to divide the data for analysis
     q_low   - FLOAT: [Optional: Default=20] The percentile value of the data which will be used as
@@ -954,11 +857,8 @@ def get_phases(data,windows=1,q_lo=20,q_hi=90):
                      the hi-pass threshold.  This threshold determines how much peak flux a previously
                      defined burst-candidate region must be before it is considered a true burst.
                      larger than q_med.
-
    Outputs:
-
     phases - ARRAY: The phase coordinates of the input data
-
    -J.M.C.Court, 2016'''
 
    data_keys=range(len(data))                                             # Generate the data indices
@@ -1052,23 +952,16 @@ def get_phases_intp(data,windows=1,q_lo=20,q_hi=90,peaks=None,givespline=False):
 def gtimask(times,gtis):
 
    '''GTI Mask
-
    Description:
-
     Takes a time series and a GTI file taken from FITS and creates a mask to place over the time series
     with 'True' values over timestamps within the GTI and 'False' values elsewhere.
-
    Inputs:
-
     times -       LIST: A list of times, the x-axis of the data to be considered.  Must be in same
                         physical units as GTI.
     gtis  - FITS TABLE: A FITS table object containing a list of 2-element lists, each of which is
                         the start and endpoint respectively of a good time index.
-
    Outputs:
-
     mask  -       LIST: A mask to put over data to hide values outside of the GTI.
-
    -J.M.Court, 2015'''
 
    times=np.array(times)
@@ -1086,31 +979,23 @@ def gtimask(times,gtis):
 def lbinify(x,y,ye,logres):
 
    '''Logarithmic Binify
-
    Decription:
-
     Takes a 2-dimenstional set of data which has already been evenly binned on the x-axis, and re-bins
     it into larger bins on the x-axis which are evenly spaced in log-space.  The original linear
     binning is retained in regions of the data where the logarithmic binning would be smaller than
     the data resolution.
-
    Inputs:
-
     x      -  LIST: The x-values of the two-dimensional data.
     y      -  LIST: The y-values of the two-dimensional data, must be the same length as x.
     ye     -  LIST: The errors associated with the y-values of the two-dimensional data, must be the
                      same length as x and y.
     logres - FLOAT: the size of the new x-axis bins, in log10-space, in which to re-bin the data.
-
    Outputs:
-
     xb     -  LIST: The re-binned x-values of the two-dimensional data, i.e. an array of the left-hand
                      edges of the new bins.
     yb     -  LIST: The re-binned y-values of the two-dimensional data.
     yeb    -  LIST: The errors associated with the rebinned y-values of the two-dimensional data.
-
    Outputs:
-
    -J.M.Court, 2015'''
 
    hinge=((x[1]-x[0])*10**logres)/((10**logres)-1)                        # Find the 'hinge' point at which to switch between linear and logarithmic binning
@@ -1151,21 +1036,14 @@ def lbinify(x,y,ye,logres):
 def leahyn(data,counts,datres):
 
    '''Leahy Normaliser
-
    Description:
-
     Takes a raw FFT-algorithm output spectrum and normalises it by the Leahy convention.
-
    Inputs:
-
     data   - LIST: the spectrum to be normalised.
     counts -  INT: the number of photon events in the data sample for which the spectrum was created.
     datres -  INT: the number of time bins in the data sample for which the spectrum was created.
-
    Outputs:
-
     leahy  - LIST: the Leahy-normalised spectrum.
-
    -J.M.Court, 2015'''
 
    leahy=2*(abs(data[0:int(datres/2.0)])**2)/counts
@@ -1178,13 +1056,9 @@ def leahyn(data,counts,datres):
 def lh2rms(leahy,rate,bg,const):
 
    '''Leahy 2 RMS Converter
-
    Description:
-
     Takes a Leahy-normalised spectrum and re-normalises it by the (RMS/Mean)^2 convention.
-
    Inputs:
-
     leahy -  LIST: the leahy-normalised spectrum to be re-normalised.
     rate  - FLOAT: the source + background count rate (per second) of the data sample from which the
                     spectrum was created.
@@ -1192,11 +1066,8 @@ def lh2rms(leahy,rate,bg,const):
                     was created.
     const - FLOAT: the average power given in Leahy normalisation for pure white noise.  Theoretically
                     const=2, but in practice is slightly lower and varies between telescopes.
-
    Outputs:
-
     rms   -  LIST: the (RMS/Mean)^2-normalised spectrum.
-
    -J.M.Court, 2015'''
 
    denom=(rate-bg)**2
@@ -1213,20 +1084,13 @@ def lh2rms(leahy,rate,bg,const):
 def lhconst(data):
 
    '''LHS Const
-
    Decription:
-
     Finds the normalisation of white noise in a given power Leahy-normalised power spectrum.  Assumes
     no spectral features in the last 20% of the spectrum.
-
    Inputs:
-
     data  -  LIST: the data to be converted.
-
    Outputs:
-
     const - FLOAT: the normalisation of white noise.
-
    -J.M.Court, 2015'''
 
    def leahynoise(x,a):
@@ -1248,23 +1112,16 @@ def lhconst(data):
 def lomb_scargle(x,y,ye,freqs):
 
    '''Lomb Scargle
-
    Decription:
-
     Returns the Lomb-Scargle periodogram of data provided by the user, scanning over a set of frequencies
     also provided by the user.
-
    Inputs:
-
     x     -  LIST: the time-array for the data to be converted.
     y     -  LIST: the data associated with time array x.
     ye    -  LIST: the errors associated with each point in y.
     freqs -  LIST: the list of discrete frequencies over which the user wants the L-S periodogram to scan.
-
    Outputs:
-
     pgram - ARRAY: the Lomb-Scargle power associated with each frequency provided in freqs.
-
    -J.M.Court, 2015'''
 
    assert len(x)==len(y)
@@ -1310,20 +1167,15 @@ def lomb_scargle(x,y,ye,freqs):
 def mcerrorcalc(func,data,data_e,ntrials,verbose=False):
 
    '''Monte Carlo Error Calculation
-
    Description:
-
     For a function which takes a set of 1-dimensional values, and for values with assoiciated
     errors, simulates new datasets from the given datavalues and errors and uses these simulations
     to estimate the error on the output value.
-
    Inputs:
-
     func    - FUNCTION: the function to be used.  MUST take arguments of the form (data,data_error).
     data    -    ARRAY: the measured data from which new data is to be simulated.
     data_e  -    ARRAY: the error on the measured data.
     ntrials -      INT: the number of simulations to run.
-
    -J.M.Court, 2017'''
 
    vals=[]
@@ -1345,15 +1197,11 @@ def mcerrorcalc(func,data,data_e,ntrials,verbose=False):
 def mxrebin(spcdata,spcerrs,xaxis,good,bfac):
 
    '''Matrix X-Rebin
-
    Description:
-
     Takes 2-Dimensional arrays of data and errors which are linearly binned on the x-axis and rebins
     them by a factor of the user's choosing, returning new data array, error array, x-axis and Boolean
     'good' array.
-
    Inputs:
-
     spcdata   - ARRAY: some 2 dimensional array of values.
     spcerrs   - ARRAY: a 2 dimensional array containing the errors associated with the values in spcdata.
                        Must have the same dimensions as spcdata.
@@ -1363,14 +1211,11 @@ def mxrebin(spcdata,spcerrs,xaxis,good,bfac):
                        True unless the corresponding row in spcdata does not correspond to a valid time
                        within the GTIs of the photon count data.
     bfac      -   INT: the binning factor, i.e. the ratio between new bin size and old bin size.
-
    Outputs:
-
     b_spcdata - ARRAY: the rebinned 2-dimensional data array
     b_spcerrs - ARRAY: the rebinned 2-dimensional error array
     b_xaxis   - ARRAY: the rebinned x-axis
     b_good    - ARRAY: the rebinned 'good' array
-
    -J.M.Court, 2015'''
 
    spx=len(spcdata[:,0])                                                  # x-dimension of new matrix matches old matrix
@@ -1414,7 +1259,6 @@ def mxrebin(spcdata,spcerrs,xaxis,good,bfac):
 def nones(shape):
     
     '''Function to basically do what np.zeros and np.ones do, but creating an array of Nones.
-
     -J.Coxon, 2015'''
 
     makeNone = np.vectorize(lambda x: None)
@@ -1427,27 +1271,20 @@ def nones(shape):
 def pdcolex2(y1,y2,ye1,ye2,gmask):
 
    '''Plot Demon Colour Extract (2D)
-
    Description:
-
     Takes two equally spaced flux series in the same set of time co-ordinates and constructs an array
     representing the file2 / file1 colour over the same time period.  Also returns the sum of the flux
     of the two series.
-
    Inputs:
-
     y1,y2   - ARRAYS: The first and second flux series respectively
     ye1,ye2 - ARRAYS: The errors of the first and second flux series respectively
     gmask   -  ARRAY: A mask of Boolean values with False at every point outside of a GTI in this
                       time series
-
    Outputs:
-
     flux    -  ARRAY: The sum total flux from the two bands
     fluxe   -  ARRAY: The errors of 'flux'
     col21   -  ARRAY: The file2/file1 colour
     col21e  -  ARRAY: The error on "col21"
-
    -J.M.Court, 2015'''
 
    warnings.filterwarnings("ignore")                                      # Div 0 errors are a real possibility.  This is me ignoring them...
@@ -1478,9 +1315,7 @@ def pdcolex2(y1,y2,ye1,ye2,gmask):
 def pdcolex3(y1,y2,y3,ye1,ye2,ye3,gmask):
 
    '''Plot Demon Colour Extract (3D)
-
    See help for Plot Demon Colour Extract (2D)
-
    -J.M.Court, 2015'''
 
    warnings.filterwarnings("ignore")                                      # Div 0 errors are a real possibility.  This is me ignoring them...
@@ -1514,9 +1349,7 @@ def pdcolex3(y1,y2,y3,ye1,ye2,ye3,gmask):
 def pdload(filename,isplotd):
     
    '''PlotDemon loader
-
    Description:
-
     Calls plotdld or csvload depending on the type of file to be opened  .
     
    Inputs:
@@ -1525,7 +1358,6 @@ def pdload(filename,isplotd):
     isplotd  - BOOL  : Whether the file to be opened has been identified as a .plotd file
     
    Outputs:
-
     times    -      ARRAY: An array, the elements of which are the left-hand edges of the time bins
                            into which counts have been binned.  Units of seconds.
     counts   -      ARRAY: The number of counts in each bin defined in 'times'.
@@ -1556,17 +1388,11 @@ def pdload(filename,isplotd):
 def plotdld(filename):
 
    '''.Plotd Load
-
    Description:
-
     Opens a .plotd file and retrieves the useful data from it.
-
    Inputs:
-
     filename - STRING: The absolute or relative path to the location of the file that will be opened.
-
    Outputs:
-
     times    -      ARRAY: An array, the elements of which are the left-hand edges of the time bins
                            into which counts have been binned.  Units of seconds.
     counts   -      ARRAY: The number of counts in each bin defined in 'times'.
@@ -1583,7 +1409,6 @@ def plotdld(filename):
     obsdata  -      TUPLE: The first element is the name of the object, the second is the observation
                            ID.
     version  -     STRING: The Version of FITSGenie in which the file was created
-
    -J.M.Court, 2015'''
 
    try:
@@ -1636,11 +1461,8 @@ def csvload(filename):
     three columns of 'time,time_error,rate,rate_error; if four or more columns.
    
    Inputs:
-
     filename - STRING: The absolute or relative path to the location of the file that will be opened.
-
    Outputs:
-
     times    -      ARRAY: An array, the elements of which are the left-hand edges of the time bins
                            into which counts have been binned.  Units of seconds.
     counts   -      ARRAY: The number of counts in each bin defined in 'times'.
@@ -1736,14 +1558,10 @@ def csvload(filename):
 def plotdsv(filename,times,rates,errors,tstart,binsize,gti,mxpcus,bgest,bgsub,bgdata,flavour,chanstr,mission,obsdata,version):
 
    '''.Plotd Save
-
    Description:
-
     Takes the input of the data products required to create a .plotd file (to read with plotdemon)
     and creates a .plotd file at a location given as the first input.
-
    Inputs:
-
     filename -     STRING: The absolute or relative path to the location of the file that will be 
                            created.
     times    -      ARRAY: An array, the elements of which are the left-hand edges of the time bins
@@ -1760,11 +1578,8 @@ def plotdsv(filename,times,rates,errors,tstart,binsize,gti,mxpcus,bgest,bgsub,bg
     obsdata  -      TUPLE: The first element is the name of the object, the second is the observation
                            ID.
     version  -     STRING: The Version of FITSGenie in which the file was created
-
    Outputs:
-
     [none]
-
    -J.M.Court, 2015'''
 
    savedata={}                                                            # Open library object to save in file
@@ -1800,13 +1615,9 @@ def plotdsv(filename,times,rates,errors,tstart,binsize,gti,mxpcus,bgest,bgsub,bg
 def rms_n(data,counts,datres,rate,bg,const):
 
    '''RMS Normaliser
-
    Description:
-
     Takes a raw FFT-algorithm output spectrum and normalises it by the (RMS/Mean)^2 convention.
-
    Inputs:
-
     data   -  LIST: the spectrum to be normalised.
     counts -   INT: the number of photon events in the data sample for which the spectrum was created.
     datres -   INT: the number of time bins in the data sample for which the spectrum was created.
@@ -1816,11 +1627,8 @@ def rms_n(data,counts,datres,rate,bg,const):
                     was created.
     const  - FLOAT: the average power given in Leahy normalisation for pure white noise.  Theoretically
                     const=2, but in practice is slightly lower and varies between telescopes.
-
    Outputs:
-
     rms    -  LIST: the Leahy-normalised spectrum.
-
    -J.M.Court, 2015'''
 
    leahy=leahyn(data,counts,datres)                                       # Leahy normalise the data
@@ -1834,20 +1642,13 @@ def rms_n(data,counts,datres,rate,bg,const):
 def rms(data,data_err=None,with_err=False):
 
    '''RMS
-
    Description:
-
     Returns the fractional RMS of a 1-dimensional data set
-
    Inputs:
-
     data     - LIST: The data to find the RMS of.
     data_err - LIST: The errors on those data points
-
    Outputs:
-
     rms  - FLOAT: The rms of the data
-
    -J.M.Court, 2015'''
 
    if type(data_err)==type(None):
@@ -1872,21 +1673,14 @@ def rms(data,data_err=None,with_err=False):
 def safe_div(x,y):
 
    '''Safe Div
-
    Description:
-
     Divides the first inputs by the second inputs if the latter is nonzero.  If an element of the second input is zero,
     the corresponding element in the output is zero.
-
    Inputs:
-
     x - ARRAY: The numerator
     y - ARRAY: The denominator
-
    Outputs:
-
     r - ARRAY: The result of division, or zero
-
    -J.M.Court, 2015'''
 
    r=np.zeros(len(y))
@@ -1899,11 +1693,8 @@ def safe_div(x,y):
 def signoff():
 
    '''Sign Off
-
    Description:
-
     Prints an underline with some spaces.  That's all.
-
    -J.M.Court, 2015'''
 
    print('')
@@ -1917,21 +1708,14 @@ def signoff():
 def sinfromcos(x,cosx):
 
    '''Sine from Cosine
-
    Description:
-
     Returns the sine of an array of values when also given their cosines.  Using this function is
     faster than using sine if the cosine values are already stored.
-
    Inputs:
-
     x    - ARRAY: the array of values to calculate the sine of.
     cosx - ARRAY: the cosines array of values to calculate the sines of.
-
    Outputs:
-
     sinx - ARRAY: the sines of x.
-
    -J.M.Court, 2015'''
 
    sinx=np.absolute((1-cosx**2)**0.5)
@@ -1942,21 +1726,14 @@ def sinfromcos(x,cosx):
 def cosfromsin(x,sinx):
 
    '''Sine from Cosine
-
    Description:
-
     Returns the cosine of an array of values when also given their sines.  Using this function is
     faster than using cosine if the sine values are already stored.
-
    Inputs:
-
     x    - ARRAY: the array of values to calculate the cosine of.
     sinx - ARRAY: the sines array of values to calculate the cosines of.
-
    Outputs:
-
     cosx - ARRAY: the sines of x.
-
    -J.M.Court, 2015'''
 
    cosx=np.absolute((1-sinx**2)**0.5)
@@ -1969,14 +1746,10 @@ def cosfromsin(x,sinx):
 def slplot(x,y,ye,xlabel,ylabel,title,figid="",typ='both',errors=True):
 
    '''Standard/Log Plotter
-
    Description:
-
     Takes a two-dimensional array of data and plots it twice on the same figure; once on standard
     linear axes, and once on logarithmic axes.
-
    Inputs:
-
     x      -   LIST: The x-values of the two-dimensional data.
     y      -   LIST: The y-values of the two-dimensional data, must be the same length as x.
     xlabel - STRING: The title of the x-axis on the graphs.
@@ -1986,11 +1759,8 @@ def slplot(x,y,ye,xlabel,ylabel,title,figid="",typ='both',errors=True):
                      of this function.
     typ    - STRING: User can input 'log' or 'lin' to only display plot of that type.
     errors -   BOOL: True or False: whether to display errorbars on plots
-
    Outputs:
-
     filename - STRING: The filename actually used when saving
-
    -J.M.Court, 2015'''
 
    pl.close(figid)                                                        # Close any previous plot of this type
@@ -2041,20 +1811,13 @@ def slplot(x,y,ye,xlabel,ylabel,title,figid="",typ='both',errors=True):
 def spliner(data,errors=None):
 
    '''Spliner
-
    Description:
-
     Smooths evenly-sampled data using a first-order Univariate spline algorithm
-
    Inputs:
-
     data        - ARRAY: The data to be smoothed
     errors      - ARRAY: [Optional] The errors associated with the errors
-
    Outputs:
-
     smooth_data - ARRAY: The smoothed data values
-
    - J.M.C.Court,2016'''
 
    if type(errors)==type(None):
@@ -2074,17 +1837,11 @@ def spliner(data,errors=None):
 def specald(filename):
 
    '''.Speca Load
-
    Description:
-
     Opens a .speca file and retrieves the useful data from it.
-
    Inputs:
-
     filename - STRING: The absolute or relative path to the location of the file that will be opened.
-
    Outputs:
-
     spcdata  -  ARRAY: An array, the elements of which are the non-normalised power spectra taken over
                        different equal-length time intervals of the photon count data being considered.
     good     -  ARRAY: A Boolean array with as many elements as spcdata has columns.  Its entries are
@@ -2116,7 +1873,6 @@ def specald(filename):
                        rows of spcdata, in seconds
     binfac   -    INT: See trates or prates
     version  - STRING: The Version of FITSGenie in which the file was created
-
    -J.M.Court, 2015'''
 
    try:
@@ -2167,16 +1923,11 @@ def specald(filename):
 def specasv(filename,spcdata,good,rates,prates,trates,phcts,npcus,binsize,bgest,foures,flavour,cs,mission,obsdata,wtype,slide,spcbinfac,version):
 
    '''.Speca Save
-
    "Should've gone to SpecaSaver..."
-
    Description:
-
     Takes the input of the data products required to create a .speca file (to read with specangel)
     and creates a .speca file at a location given as the first input.
-
    Inputs:
-
     filename  - STRING: The absolute or relative path to the location of the file that will be created.
     spcdata   -  ARRAY: An array, the elements of which are the non-normalised power spectra taken over
                         different equal-length time intervals of the photon count data being considered.
@@ -2210,11 +1961,8 @@ def specasv(filename,spcdata,good,rates,prates,trates,phcts,npcus,binsize,bgest,
                         rows of spcdata, in seconds
     spcbinfac -    INT: See trates or prates
     version   - STRING: The Version of FITSGenie in which the file was created
-
    Outputs:
-
     filename - STRING: The filename actually used when saving
-
    -J.M.Court, 2015'''
 
    savedata={}                                                            # Open library object to save in file
@@ -2252,25 +2000,18 @@ def specasv(filename,spcdata,good,rates,prates,trates,phcts,npcus,binsize,bgest,
 def srinr(t,binning,domain,minv=None,maxv=None):
 
    '''Subrange in Range: Subrange Creator
-
    Description:
-
     Takes an array of ordered values and asks the user to select a subrange.  Converts the
     users entries (in the same units as the data) into data IDs and checks that they are valid and
     within the array.
-
    Inputs:
-
     t       -   LIST: An evenly spaced list of values.
     binning -   LIST: The spacing of the list of values.
     domain  - STRING: The name of the physical quantity represented by the data in t.
-
    Outputs:
-
     new_mn  -    INT: The array index of the subrange minimum.
     new_mx  -    INT: The array index of the subrange maximum.
     boolv   -   BOOL: A flag to denote whether range was clipped.
-
    -J.M.Court, 2015'''
 
    old_mn=0
@@ -2309,24 +2050,17 @@ def srinr(t,binning,domain,minv=None,maxv=None):
 def tnorm(t,res):
 
    '''Time-Normer
-
    Description:
-
     Takes an array of evenly-spaced time values and normalises them by subtracting the lowest value
     from each.  Then forces each time to equal an integer multiple of the pre-normalising resolution
     to deal with computational inaccuracies in the subtraction process.
-
    Inputs:
-
     t   -  LIST: The list of evenly spaced time-values.  They need not be ordered, but the lowest
                  value must be first.
     res - FLOAT: The resolution of the list t; entered by hand again to negate computational
                  error.
-
    Outputs:
-
     nt  -  LIST: The normalised time values.
-
    -J.M.Court, 2014'''
 
    t=np.array(t)
@@ -2376,22 +2110,15 @@ def tokenloc(enigma,token):
 def uniqfname(filename,extension):
 
    '''Unique Filename Generator
-
    Description:
-
     When given the path to a file, ascertains whether a file already exists in that location.  If it
     does, this function finds the lowest value of n such that 'filename(n).extension' is unique and
     returns this new name.  If the file does not exist, returns 'filename.extension'.
-
    Inputs:
-
     filename  - STRING: The full path to the proposed file location, excluding the extension.
     extension - STRING: The extension of the proposed file location, excluding the leading '.'.
-
    Outputs:
-
     uniqname  - STRING: A string containing the best available unique filename.
-
    -J.M.Court, 2015'''
 
    filenamex=filename
@@ -2414,20 +2141,13 @@ def uniqfname(filename,extension):
 def vcrebin(vecdata,bfac):
 
    '''Vector X-Rebin
-
    Description:
-
     Takes 1-Dimensional array of data and which is linearly binned and rebins it by a factor of the
     user's choosing, returning new data array.
-
    Inputs:
-
     vecdata   - ARRAY: some 2 dimensional array of values.
-
    Outputs:
-
     b_vecdata - ARRAY: the rebinned 2-dimensional data array
-
    -J.M.Court, 2015'''
 
    bfac=int(bfac)
@@ -2455,20 +2175,13 @@ def vcrebin(vecdata,bfac):
 def xtrfilloc(filepath):
 
    '''Extract File Location
-
    Description:
-
     Given the relative path to a file, extracts the file name and it's location.
-
    Inputs:
-
     filepath - STRING: The path to a file
-
    Outputs:
-
     filename - STRING: The name of the file
     fileloca - STRING: The location of the file
-
    -J.M.Court, 2015'''
 
    filename=(filepath.split('/')[-1])                                     # Identify filename without directory
@@ -2482,5 +2195,3 @@ def xtrfilloc(filepath):
       fileloca=os.getcwd()+fileloca[1:]                                   # Dump current directory onto the front to make this absolute
 
    return filename,fileloca
-
-
