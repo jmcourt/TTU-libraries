@@ -1020,19 +1020,19 @@ class lightcurve(dat.DataSet):
 
   # smooths the data for a given window size.  Sorta the opposite of above.
 
-  def smooth(self,window_size,method='None'):
-    newy=smart_smooth(self,window_size,method)
+  def smooth(self,parameter,method='None'):
+    newy=smart_smooth(self,parameter,method)
     self.set_y(newy)
 
-  def smoothed(self,window_size,method='None'):
+  def smoothed(self,parameter,method='None'):
     s=self.copy()
-    s.smooth(window_size,method)
+    s.smooth(window_size,parameter)
     return s
 
   # returns 2 lightcurves: the Smoothed and the Detrended
 
-  def decomposed(self,window_size,method='None'):
-    smoothed_y=smart_smooth(self,window_size,method)
+  def decomposed(self,parameter,method='None'):
+    smoothed_y=smart_smooth(self,parameter,method)
     s1=self.copy()
     s2=self.copy()
     s1.set_y(smoothed_y)
@@ -1381,7 +1381,7 @@ class lightcurve(dat.DataSet):
     self.eclipse_widths_e=np.array(eclipse_widths_e)
     self.eclipse_contin_e=np.array(eclipse_contin_e)
 
-  def plot_eclipse_depths_continuum_diagram(self,bin_factor=1,output=None,block=False,arrowplot=False,plot1_1=True,quiescent_percentile=50,**kwargs):
+  def plot_eclipse_depths_continuum_diagram(self,bin_factor=1,output=None,block=False,arrowplot=False,plot1_1=True,q_lim=50,q_lim_absolute=False,**kwargs):
     if not self.has('eclipse_depths'):
       raise dat.DataError('Must prepare eclipse properties before plotting EDC diagram!')
     raw_x=self.eclipse_contin
@@ -1394,14 +1394,17 @@ class lightcurve(dat.DataSet):
     if arrowplot:
       dat.arrow_plot(ax,px,py,zorder=2)
     if plot1_1:
-      q_lim=np.percentile(raw_x,quiescent_percentile)
-      print('QLim='+str(q_lim))
+      if not q_lim_absolute:
+        q_lim=np.percentile(raw_x,q_lim)
+        print('Calculated QLim='+str(q_lim))
       fit_x=raw_x[raw_x<q_lim]
       fit_y=raw_y[raw_x<q_lim]
       def fit_func(x,c):
         return x+c
       fit_c=optm.curve_fit(fit_func,fit_x,fit_y,[0])[0][0]
       ax.plot([min(raw_x),max(raw_x)],[min(raw_x)+fit_c,max(raw_x)+fit_c],'k--',zorder=-1)
+    ax.set_xlabel('Out of Eclipse Rate'+self.y_unit_string())
+    ax.set_ylabel('Eclipse Depth'+self.y_unit_string())
     pl.show(block=block)
 
   # Some super basic arithmetic functions for manipulating lightcurves, i.e. "add a constant", "divide by a constant"
