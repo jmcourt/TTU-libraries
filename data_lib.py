@@ -330,29 +330,52 @@ def gaussian_bootstrap(y,ye):
 
 # --------------- Plotting methods -----------------------
 
-def arrow_plot(ax,x,y,color='blue',quiver_thickness=0.005,edgecolor=None,facecolor=None,marker='o',**kwargs):
-    """arrow_plot
+def arrow_plot(ax,x,y,color='C0',quiver_thickness=0.005,edgecolor=None,facecolor=None,marker='.',**kwargs):
+  """arrow_plot
     
-    Plots a series of points connected by arrows at the half-way point.
+  Plots a series of points connected by arrows at the half-way point.
     
-    Oddly, `plot` uses a different scale for `linewidth` than `quiver` does for `width`, so this just uses `quiver` twice - once
-    for the ``background'' lines, and once to place arrows in the middle. Thickness and color are set with kwargs.
+  Oddly, `plot` uses a different scale for `linewidth` than `quiver` does for `width`, so this just uses `quiver` twice - once
+  for the ``background'' lines, and once to place arrows in the middle. Thickness and color are set with kwargs.
     
-    You can plot this on an axis/subplot, or you can pass `matplotlib.pyplot` or whatever and it'll work too.
+  You can plot this on an axis/subplot, or you can pass `matplotlib.pyplot` or whatever and it'll work too.
 
-    - David Williamson 2019, see https://github.com/Astrokiwi/arrow_plot
-    """
-    if edgecolor is None:
-        edgecolor=color
-    if facecolor is None:
-        facecolor=color
-    dx = x[1:]-x[:-1]
-    dy = y[1:]-y[:-1]
-    ax.quiver(x[:-1],y[:-1],dx,dy,
+  - David Williamson 2019, see https://github.com/Astrokiwi/arrow_plot
+  """
+
+  if edgecolor is None:
+    edgecolor=color
+  if facecolor is None:
+    facecolor=color
+  dx = x[1:]-x[:-1]
+  dy = y[1:]-y[:-1]
+  ax.quiver(x[:-1],y[:-1],dx,dy,
+            scale=1,scale_units='xy',angles='xy',
+            headwidth=0.,headlength=0.,headaxislength=0.,
+            width=quiver_thickness,color=color,**kwargs)
+  ax.quiver(x[:-1],y[:-1],dx/2,dy/2,
                 scale=1,scale_units='xy',angles='xy',
-                headwidth=0.,headlength=0.,headaxislength=0.,
-                width=quiver_thickness,color=color,**kwargs)
-    ax.quiver(x[:-1],y[:-1],dx/2,dy/2,
-                scale=1,scale_units='xy',angles='xy',
-                width=quiver_thickness,color=color,**kwargs)
-    ax.scatter(x,y,marker=marker,edgecolor=color,facecolor=color,**kwargs)
+            width=quiver_thickness,color=color,**kwargs)
+
+# --------------- Stats Methods --------------------------
+
+def chi_squared(observed,observed_errors,calculated):
+  numerator=(observed-calculated)**2
+  denominator=observed_errors**2
+  return np.sum(numerator/denominator)
+
+def reduced_chi_squared(observed,observed_errors,calculated,n_fit_params):
+  deg_of_freedom=len(observed)-n_fit_params
+  return chi_squared(observed,observed_errors,calculated)/deg_of_freedom
+
+
+
+
+
+
+
+
+
+
+
+

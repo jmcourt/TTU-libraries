@@ -128,6 +128,8 @@ class lightcurve(dat.DataSet):
 
   def get_length(self):
     return len(self.get_x())
+  def get_len(self):
+    return self.get_length()
   def get_acceptable_gap(self):
     return self.acceptable_gap
   def get_xrange(self):
@@ -1319,15 +1321,117 @@ class lightcurve(dat.DataSet):
       self.set_period(estimate)
     return estimate,error
     
+  # Burst properties!  Shameless PANTHEON ripoff!
+
+  def get_burst_properties(self,thresh_hi,thresh_lo,scan_buffer=5,thresh_method='standard deviations',parameter=1):
+    if thresh_method.lower()=='percentile':
+      high_thresh=np.percentile(self.get_y(),thresh_hi)
+      low_thresh=np.percentile(self.get_y(),thresh_lo)
+    elif thresh_method.lower()=='standard deviations':
+      try:
+        thresh_method_parameter=float(parameter)
+      except:
+        raise dat.DataError('Standard Deviation Burst Scanning Requires an input parameter as window size (in time units)') # In units of time
+      n_windows=int(self.get_xrange()//parameter)                # find standard deviation in many windows and get median, so bursts dont mess with it
+      stds=[]
+      st_time=self.get_start_time()
+      for i in range(n_windows):
+        try:
+          stds.append(self.calved(st_time+i*parameter,st_time+(i+1)*parameter).get_std())
+        except:
+          continue
+      useful_std=np.median(stds)
+      useful_base=self.get_median()
+      high_thresh=useful_base+thresh_hi*useful_std
+      low_thresh=useful_base+thresh_lo*useful_std
+    else:
+      high_thresh=thresh_hi
+      low_thresh=thresh_lo
+      
+    over_thresh=self.get_y()>low_thresh                                   # Create a Boolean array by testing whether the input array is above the mid
+                                                                          #  threshold.  Each region of consecutive 'True' objects is considered a burst-
+                                                                          #  -candidate region.
+    burst_starts=[]
+    burst_ends=[]
+    bursts=[]
+    while True:                                                                                                                          
+      masked=np.array(self.get_y())*over_thresh                        # Reduce all data outside of burst-candidate regions to zero
+      if max(masked)<high_thresh:                                      # If highest peak in all remaining burst-candidate regions is below the high threshold,
+                                                                          #  assume there are no more bursts to be found.
+        break
+      peak_loc=masked.tolist().index(max(masked))                      # Find peak in remaining data
+      i=peak_loc
+      end_counter=0
+      while i<self.get_length() and end_counter<scan_buffer:                    # Scrub the True objects in the Boolean array corresponding to that peak's candidate
+                                                                       #  region, thus removing it
+        if not over_thresh[i]:
+          end_counter+=1
+        else:
+          end_counter=0
+        over_thresh[i]=False
+        i+=1
+        end_i=i-scan_buffer
+      i=peak_loc-1
+      end_counter=0
+      while i>=0 and end_counter<scan_buffer:
+
+        if not over_thresh[i]:
+          end_counter+=1
+        else:
+          end_counter=0
+        over_thresh[i]=False
+        i-=1
+        start_i=i+scan_buffer
+      if end_i-start_i<scan_buffer:
+        continue
+      burst_starts.append(start_i)
+      burst_ends.append(end_i)
+    burst_starts.sort()
+    burst_ends.sort()
+    num_bursts=len(burst_starts)
+
+    for b in range(num_bursts):
+      if b==0:
+        s_index=0
+      else:
+        s_index=burst_ends[b-1]
+      if b==num_bursts-1:
+        e_index=self.get_length()
+      else:
+        e_index=burst_starts[b+1]
+
+      if burst_starts[b]-s_index<1:
+        preburst_mean=np.nan
+      else:
+        s_time=self.get_x()[s_index]
+        e_time=self.get_x()[burst_starts[b]]
+        preburst_mean=self.calved(s_time,e_time).get_mean()
+
+      if e_index-burst_ends[b]<1:
+        postburst_mean=np.nan
+      else:
+        s_time=self.get_x()[burst_ends[b]]
+        e_time=self.get_x()[e_index-1]
+        postburst_mean=self.calved(s_time,e_time).get_mean()
+      
+      s_time=self.get_x()[burst_starts[b]]
+      e_time=self.get_x()[burst_ends[b]]
+      burst_lc=self.calved(s_time,e_time)
+      if burst_lc.get_length()<scan_buffer:
+        continue
+      this_burst=burst(burst_lc,preburst_mean,postburst_mean)
+      bursts.append(this_burst)
+
+    self.bursts=bursts
+
   # Eclipse properties!  Great for those Eclipse Depth/Out-of-Eclipse-Flux plots!
 
-  def get_eclipse_properties(self,period=None,phase=None,sample_halfwidth=0.1,pcm_low=20,pcm_high=95):
+  def get_eclipse_properties(self,period=None,phase=None,sample_halfwidth=0.1,pcm_low=20,pcm_high=95,min_sigma=1):
     if self.is_folded():
       raise dat.DataError('Cannot find eclipse properties of folded data!')
     if not self.x_axis_is_phase():
       if period==None:
         if self.get_period()==0:
-          print(self.get_period())
           raise dat.DataError('Must specify period or convert x-axis to NCycles!')
         else:
           period=self.get_period()
@@ -1339,7 +1443,11 @@ class lightcurve(dat.DataSet):
     smo,det=sample_lc.decomposed((1,pcm_low,pcm_high),'pcm')
     del sample_lc
     if phase==None:
-      phase=det.phase_folded(1).get_min_time()
+      folded=det.phase_folded(1)
+      input_t=folded.get_min_time()
+      medi=folded.get_median()
+      fit=optm.curve_fit(func.gaussian,folded.get_x(),folded.get_y(),(folded.get_min()-medi,input_t,sample_halfwidth,medi))
+      phase=fit[0][1]
     smo.add_time(-phase)
     det.add_time(-phase)
     eclipse_depths=[]
@@ -1359,12 +1467,17 @@ class lightcurve(dat.DataSet):
         continue
       cl_smo=smo.calved(t-sample_halfwidth,t+sample_halfwidth).added_time(-t)
       try:
-        fit=optm.curve_fit(fit_function,cl_det.get_x(),cl_det.get_y(),(cl_det.get_min(),sample_halfwidth))
+        with wr.catch_warnings():
+          wr.simplefilter('ignore')
+          fit=optm.curve_fit(fit_function,cl_det.get_x(),cl_det.get_y(),(cl_det.get_min(),sample_halfwidth))
       except:
         continue
       fit_v=fit[0]
-      fit_e=np.sqrt(np.diag(fit[1]))
-
+      with wr.catch_warnings():
+        wr.simplefilter('ignore')
+        fit_e=np.sqrt(np.diag(fit[1]))
+      if not (np.abs(fit_v[0])>min_sigma*fit_e[0] and np.abs(fit_v[1])>min_sigma*fit_e[1]):
+        continue
       eclipse_depths.append(fit_v[0])
       eclipse_widths.append(fit_v[1])
       eclipse_contin.append(cl_smo.get_mean())
@@ -1381,7 +1494,7 @@ class lightcurve(dat.DataSet):
     self.eclipse_widths_e=np.array(eclipse_widths_e)
     self.eclipse_contin_e=np.array(eclipse_contin_e)
 
-  def plot_eclipse_depths_continuum_diagram(self,bin_factor=1,output=None,block=False,arrowplot=False,plot1_1=True,q_lim=50,q_lim_absolute=False,**kwargs):
+  def plot_eclipse_depths_continuum_diagram(self,bin_factor=1,output=None,block=False,arrowplot=False,plot1_1=True,q_lim=50,q_lim_absolute=False,star_flux=None,**kwargs):
     if not self.has('eclipse_depths'):
       raise dat.DataError('Must prepare eclipse properties before plotting EDC diagram!')
     raw_x=self.eclipse_contin
@@ -1390,21 +1503,54 @@ class lightcurve(dat.DataSet):
     raw_ye=self.eclipse_depths_e
     px,py,pxe,pye=dat.rebin_by_factor(bin_factor,raw_x,raw_y,raw_xe,raw_ye)
     ax=fi.filter_axes(output)
-    ax.errorbar(px,py,xerr=pxe,yerr=pye,**kwargs)
+    #ax.errorbar(px,py,xerr=pxe,yerr=pye,zorder=-1,**kwargs)
     if arrowplot:
-      dat.arrow_plot(ax,px,py,zorder=2)
+      dat.arrow_plot(ax,px,py,zorder=90)
     if plot1_1:
+      if star_flux==None:
+        if not q_lim_absolute:
+          q_lim=np.percentile(raw_x,q_lim)
+          print('Calculated QLim='+str(q_lim))
+        fit_x=raw_x[raw_x<q_lim]
+        fit_y=raw_y[raw_x<q_lim]
+        def fit_func(x,c):
+          return x+c
+        star_flux=optm.curve_fit(fit_func,fit_x,fit_y,[0])[0][0]
+      ax.plot([0.9*min(raw_x),1.1*max(raw_x)],[0.9*min(raw_x)+star_flux,1.1*max(raw_x)+star_flux],'k--',zorder=-1)
+    ax.set_xlabel('Out of Eclipse Rate'+self.y_unit_string())
+    ax.set_ylabel('Eclipse Depth'+self.y_unit_string())
+    pl.show(block=block)
+
+  def plot_flattened_eclipse_depths_continuum_diagram(self,bin_factor=1,output=None,block=False,arrowplot=False,q_lim=50,q_lim_absolute=False,star_flux=None,**kwargs):
+    if not self.has('eclipse_depths'):
+      raise dat.DataError('Must prepare eclipse properties before plotting EDC diagram!')
+    raw_x=self.eclipse_contin
+    raw_y=self.eclipse_depths
+    raw_xe=self.eclipse_contin_e
+    raw_ye=self.eclipse_depths_e
+    if star_flux==None:
+      def fit_func(x,c):
+        return x+c
+
       if not q_lim_absolute:
         q_lim=np.percentile(raw_x,q_lim)
         print('Calculated QLim='+str(q_lim))
       fit_x=raw_x[raw_x<q_lim]
       fit_y=raw_y[raw_x<q_lim]
-      def fit_func(x,c):
-        return x+c
-      fit_c=optm.curve_fit(fit_func,fit_x,fit_y,[0])[0][0]
-      ax.plot([min(raw_x),max(raw_x)],[min(raw_x)+fit_c,max(raw_x)+fit_c],'k--',zorder=-1)
+
+      star_flux=optm.curve_fit(fit_func,fit_x,fit_y,[0])[0][0]
+
+    raw_y=raw_y/(raw_x+star_flux)
+    raw_ye=(raw_ye)/(raw_x+star_flux)
+
+    px,py,pxe,pye=dat.rebin_by_factor(bin_factor,raw_x,raw_y,raw_xe,raw_ye)
+    ax=fi.filter_axes(output)
+    ax.errorbar(px,py,xerr=pxe,yerr=pye,color='0.7',zorder=-9000,**kwargs)
+    if arrowplot:
+      dat.arrow_plot(ax,px,py,zorder=2)
+    ax.axhline(1,color='k',zorder=-9000)
     ax.set_xlabel('Out of Eclipse Rate'+self.y_unit_string())
-    ax.set_ylabel('Eclipse Depth'+self.y_unit_string())
+    ax.set_ylabel('Fractional Eclipse Depth')
     pl.show(block=block)
 
   # Some super basic arithmetic functions for manipulating lightcurves, i.e. "add a constant", "divide by a constant"
@@ -1509,7 +1655,7 @@ class lightcurve(dat.DataSet):
     return np.mean(self.get_y())
 
   def get_error_of_mean(self):
-    return np.sum(self.get_ye()**2)/self.get_length()
+    return np.sqrt(np.sum(self.get_ye()**2))/self.get_length()
 
   def get_std(self):
     return np.std(self.get_y())
@@ -1577,6 +1723,31 @@ class rxte_lightcurve(lightcurve):
     for gti in self.gtis:
       new_gtis.append((gti[0]+shift,gti[1]+shift))
     self.gtis=new_gtis
+
+# ======= bonus classes! ===============================
+
+class burst(object):
+  def __init__(self,lc,preburst_mean,postburst_mean):
+    self.lc=lc
+    self.t_start=self.lc.get_x()[0]
+    self.t_end=self.lc.get_x()[-1]
+    self.t_peak=self.lc.get_x()[np.argmax(self.lc.get_y())]
+    self.preburst_mean=preburst_mean
+    self.postburst_mean=postburst_mean
+    self.rise_time=self.t_peak-self.t_start
+    self.fall_time=self.t_end-self.t_peak
+
+  def plot(self):
+    self.lc.quickplot()
+
+  def list_parameters(self):
+    print('Start time   : '+str(self.t_start))
+    print('End time     : '+str(self.t_end))
+    print('Peak time    : '+str(self.t_peak))
+    print('Rise time    : '+str(self.rise_time))
+    print('Fall time    : '+str(self.fall_time))
+    print('Preburst Rate: '+str(self.preburst_mean))
+    print('Preburst Rate: '+str(self.postburst_mean))
 
 # ======= define some fetchers for making instrument-specific lightcurves =======================================================================
 
