@@ -78,6 +78,7 @@ class lightcurve(dat.DataSet):
     self.set_data_even_flag(False)
     self.set_xphase_flag(False)
     self.set_period(0)
+    self.period_calculated=False
 
   # Basic getters & setters
 
@@ -115,6 +116,14 @@ class lightcurve(dat.DataSet):
     return self.period
   def set_period(self,period):
     self.period=float(period)
+    self.period_calculated=True
+  def fetch_period(self):
+    if self.has_period():
+      return self.get_period()
+    else:
+      raise dat.DataError('No Period Specified!')
+  def has_period(self):
+    return self.period_calculated
 
   def get_t_units(self):
     return self.t_units
@@ -410,10 +419,12 @@ class lightcurve(dat.DataSet):
 
   # Creates a scatter plot of an unfolded lightcurve where the x-coord of each point is its phase
 
-  def plot_folded_scatterplot(self,period,output=None,block=False,clip_percentile=100,**kwargs):
+  def plot_folded_scatterplot(self,period=None,output=None,block=False,clip_percentile=100,**kwargs):
     if self.is_folded():
       wr.warn("Can't fold that which is already folded!")
     else:
+      if period==None:
+        period=self.fetch_period()
       folder=fo.linear_folder(self,period)
       ax=fi.filter_axes(output)
       p=folder.get_p()
@@ -483,7 +494,7 @@ class lightcurve(dat.DataSet):
 
   def plot_rms(self,fractional=False,output=None,x_unit='time',block=False,**kwargs):
     if not self.has('rms_over_time_x'):
-      raise dat.DataError('RMS plots prepared!  Prepare with prep_variability_stats')
+      raise dat.DataError('RMS plots not prepared!  Prepare with prep_variability_stats')
     if x_unit.lower() not in ('time','rate'):
       raise dat.DataError('I dont recognise the X-unit "'+str(x_unit)+'"!  Valid X-units are "time" or "rate"')
     ax=fi.filter_axes(output)
@@ -1159,7 +1170,9 @@ class lightcurve(dat.DataSet):
 
   # Flux phase diagrams!
 
-  def flux_phase_diagram(self,period,Ncycles_per_line=2):
+  def flux_phase_diagram(self,period=None,Ncycles_per_line=2):
+    if period==None:
+      period=self.fetch_period()
     phase_bins=int(round(period/self.get_binsize())*Ncycles_per_line)
     even_data=self.evened_bins(period*Ncycles_per_line/phase_bins)
     length=even_data.get_length()
@@ -1171,7 +1184,9 @@ class lightcurve(dat.DataSet):
     Z=even_data.get_y().reshape(n_columns,phase_bins)
     self.fp_data=dat.TwoD_Dataframe(ph_axis,cy_axis,Z)
     
-  def plot_flux_phase_diagram(self,output=None,block=False,norm_per_line=True,nans_as=np.nan,colour_range='auto',cmap='viridis',colourbar=False,cbar_ax=None):
+  def plot_flux_phase_diagram(self,period=None,Ncycles_per_line=2,output=None,block=False,norm_per_line=True,nans_as=np.nan,colour_range='auto',cmap='viridis',colourbar=False,cbar_ax=None):
+    if not self.has('fp_data'):
+      self.flux_phase_diagram(period,Ncycles_per_line)
     plot_data=self.fp_data.copy()
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Flux-Phase Diagram')
@@ -1201,7 +1216,9 @@ class lightcurve(dat.DataSet):
 
   # Phase-folder!  Does a bog-standard fixed period phase-folding
 
-  def plot_with_period(self,period,t0=0,output=None,block=False,**kwargs):
+  def plot_with_period(self,period=None,t0=0,output=None,block=False,**kwargs):
+    if period==None:
+      period=self.fetch_period()
     ax=fi.filter_axes(output)
     self.quickplot(output=ax,**kwargs)
     n0=int((self.get_start_time()-t0)//period)+1
@@ -1210,34 +1227,44 @@ class lightcurve(dat.DataSet):
       ax.axvline(n*period+t0,color='k',zorder=-1)
     fi.plot_save(output,block)
 
-  def get_phases(self,period):
+  def get_phases(self,period=None):
+    if period==None:
+      period=self.fetch_period()
     return (self.get_x()%period)/period
 
-  def get_Ncycles(self,period):
+  def get_Ncycles(self,period=None):
+    if period==None:
+      period=self.fetch_period()
     return self.get_x()/period
 
-  def set_x_axis_to_Ncycles(self,period):
+  def set_x_axis_to_Ncycles(self,period=None):
     if self.x_axis_is_phase():
       wr.warn('X-axis is already in NCycles!')
     else:
+      if period==None:
+        period=self.fetch_period()
       self.set_x(self.get_Ncycles(period))
       self.set_xphase_flag(True)
       self.set_t_units('# Cycles')
       self.set_period(period)
 
-  def setted_x_axis_to_Ncycles(self,period):  # disregard the awful english, it follows the naming scheme for in-place vs. copy-producing methods...
+  def setted_x_axis_to_Ncycles(self,period=None):  # disregard the awful english, it follows the naming scheme for in-place vs. copy-producing methods...
     if self.x_axis_is_phase():
       wr.warn('X-axis is already in NCycles!')
       return self
     else:
+      if period==None:
+        period=self.fetch_period()
       s=self.copy()
       s.set_x_axis_to_Ncycles(period)
       return s
 
-  def phase_fold(self,period,phase_bins=100,standev_errors=False):
+  def phase_fold(self,period=None,phase_bins=100,standev_errors=False):
     if self.is_folded():
       wr.warn('Already folded!  Skipping!')
       return None
+    if period==None:
+      period=self.fetch_period()
     self.folder=fo.linear_folder(self,period)
     self.folder.fold(phase_bins,standev_errors=standev_errors)
     self.set_x(self.folder.get_fx())
@@ -1248,10 +1275,12 @@ class lightcurve(dat.DataSet):
     self.set_folded_flag(True)
     self.set_xphase_flag(True)
 
-  def phase_folded(self,period,phase_bins=100,standev_errors=False):
+  def phase_folded(self,period=None,phase_bins=100,standev_errors=False):
     if self.is_folded():
       wr.warn('Already folded!  Skipping!')
       return self
+    if period==None:
+      period=self.fetch_period()
     s=self.copy()
     s.phase_fold(period,phase_bins,standev_errors=standev_errors)
     return s
@@ -1302,7 +1331,7 @@ class lightcurve(dat.DataSet):
         wr.simplefilter("ignore")
         ests=optm.curve_fit(func.gaussian,x,y,invals)
     except RuntimeError:
-      if overwrite:
+      if overwrite or not self.has_period():
         self.set_period(estimate)
       return estimate,error  # return a value if the parameter space becomes non-gaussian
     check0=np.abs(ests[0][0])>3*np.sqrt(np.abs(np.diag(ests[1])))[0]
@@ -1310,14 +1339,14 @@ class lightcurve(dat.DataSet):
     check2=np.abs(ests[0][2])>3*np.sqrt(np.abs(np.diag(ests[1])))[2]
     check3=np.abs(ests[0][3])>3*np.sqrt(np.abs(np.diag(ests[1])))[3]
     if not (check0 and check1 and check2 and check3): # also return value if gaussian is fit but poorly constrained
-      if overwrite:
+      if overwrite or not self.has_period():
         self.set_period(estimate)
       return estimate,error
     estimate=ests[0][1]
     error=np.sqrt(np.diag(ests[1])[1])
     if -np.log10(variance)<=max_iterations:
       estimate,error=self.get_minimum_dispersion_period(estimate,phase_bins=phase_bins,max_iterations=max_iterations,variance=0.1*variance,error=error)
-    if overwrite:
+    if overwrite or not self.has_period():
       self.set_period(estimate)
     return estimate,error
     
@@ -1337,7 +1366,9 @@ class lightcurve(dat.DataSet):
       st_time=self.get_start_time()
       for i in range(n_windows):
         try:
-          stds.append(self.calved(st_time+i*parameter,st_time+(i+1)*parameter).get_std())
+          scalve=self.calved(st_time+i*parameter,st_time+(i+1)*parameter)
+          assert not scalve.is_empty()
+          stds.append(scalve.get_std())
         except:
           continue
       useful_std=np.median(stds)
@@ -1424,6 +1455,26 @@ class lightcurve(dat.DataSet):
 
     self.bursts=bursts
 
+  def plot_bursts(self):
+    if not self.has('bursts'):
+      raise dat.DataError('Bursts not prepared!  Run get_burst_properties first!')
+    elif len(self.bursts)==0:
+      raise dat.DataError('No Bursts to plot!')
+    else:
+      for burst in self.bursts:
+        burst.lc.quickplot(block=False)
+
+  def show_burst_properties(self):
+    if not self.has('bursts'):
+      raise dat.DataError('Bursts not prepared!  Run get_burst_properties first!')
+    print('Number of Bursts: '+str(len(self.bursts)))
+    b_i=0
+    for b in self.bursts:
+      print('-----------------')
+      b_i+=1
+      print('Burst #'+str(b_i)+':')
+      b.list_parameters()
+      
   # Eclipse properties!  Great for those Eclipse Depth/Out-of-Eclipse-Flux plots!
 
   def get_eclipse_properties(self,period=None,phase=None,sample_halfwidth=0.1,pcm_low=20,pcm_high=95,min_sigma=1):
@@ -1431,11 +1482,8 @@ class lightcurve(dat.DataSet):
       raise dat.DataError('Cannot find eclipse properties of folded data!')
     if not self.x_axis_is_phase():
       if period==None:
-        if self.get_period()==0:
-          raise dat.DataError('Must specify period or convert x-axis to NCycles!')
-        else:
-          period=self.get_period()
-          sample_lc=self.setted_x_axis_to_Ncycles(period)
+        period=self.fetch_period()
+        sample_lc=self.setted_x_axis_to_Ncycles(period)
       else:
         sample_lc=self.copy()
     else:
@@ -1707,7 +1755,16 @@ class kepler_lightcurve(lightcurve):
     self.set_t_units('BJD')
     self.set_y_units('e/s')
 
-class rxte_lightcurve(lightcurve):
+class lightcurve_with_gti(lightcurve):
+
+  def shift_gtis(self,shift):
+    new_gtis=[]
+    for gti in self.gtis:
+      new_gtis.append((gti[0]+shift,gti[1]+shift))
+    self.gtis=new_gtis
+
+
+class rxte_lightcurve(lightcurve_with_gti):
   def unpack_metadata(self):
     self.objname=self.get_meta('name')
     self.mission=self.get_meta('mission')
@@ -1723,6 +1780,15 @@ class rxte_lightcurve(lightcurve):
     for gti in self.gtis:
       new_gtis.append((gti[0]+shift,gti[1]+shift))
     self.gtis=new_gtis
+
+class nicer_lightcurve(lightcurve_with_gti):
+  def unpack_metadata(self):
+    self.objname=self.get_meta('name')
+    self.mission=self.get_meta('mission')
+    self.set_binsize(self.get_meta('binsize'))
+    self.gtis=self.get_meta('gtis')
+    self.set_t_units('s')
+    self.set_y_units=('cts/s')
 
 # ======= bonus classes! ===============================
 
@@ -1747,9 +1813,32 @@ class burst(object):
     print('Rise time    : '+str(self.rise_time))
     print('Fall time    : '+str(self.fall_time))
     print('Preburst Rate: '+str(self.preburst_mean))
-    print('Preburst Rate: '+str(self.postburst_mean))
+    print('Postburst Rate: '+str(self.postburst_mean))
 
 # ======= define some fetchers for making instrument-specific lightcurves =======================================================================
+
+# THE AUTOFETCH!
+
+def get_lc_auto(filename):
+  f=safe_open_fits(filename)
+  try:
+    mission=f[1].header['TELESCOP'].upper()
+  except:
+    raise dat.DataError('Unknown Mission!  Cannot load!')
+  if mission[:4]=='TESS':
+    return get_tess_lc(filename)
+  elif mission[:6]=='KEPLER':
+    return get_kepler_lc(filename)
+  elif mission[:5]=='NICER':
+    return get_nicer_lc(filename)
+  elif mission[:3]=='XTE':
+    mode=f[1].header['DATAMODE']
+    if mode=='GoodXenon_2s':
+      return get_rxte_lc_from_gx(filename)
+    else:
+      raise NotImplementedError('RXTE Datamode '+mode+' not implemented!')
+  else:
+    raise NotImplementedError(mission+' Data not implemented!')
 
 def get_tess_lc(filename):
   if not imported_astropy:
@@ -1803,6 +1892,8 @@ def get_tess_lc(filename):
   f.close()
   return tess_lightcurve(x,y,ye,meta=imeta)
 
+###############################################################################
+
 def get_kepler_lc(filename):
   imeta={}
   f=safe_open_fits(filename)
@@ -1833,6 +1924,44 @@ def get_kepler_lc(filename):
   imeta['binsize']=f[1].header['TIMEDEL']
   f.close()
   return kepler_lightcurve(x,y,ye,meta=imeta)
+
+###############################################################################
+
+def get_nicer_lc(filename):
+  imeta={}
+  f=safe_open_fits(filename)
+  if f[1].header['TELESCOP'][:5].upper()!='NICER':
+    raise dat.DataError('FITS file does not appear to be from NICER')
+  if f[1].header['EXTNAME'].upper()!='RATE':
+    raise dat.DataError('NICER FITS file does not appear to be a lightcurve')
+  try:
+    oname=f[1].header['OBJECT']
+  except KeyError:
+    oname='UNKNOWN'
+    wr.warn('Could not find Object Name')
+  timezero=f[1].header['TIMEZERO']
+  imeta['name']=oname
+  imeta['mission']='TESS'
+  lcdat=f[1].data
+  x=lcdat['TIME']
+  y=lcdat['RATE']
+  ye=lcdat['ERROR']
+  gtimask=np.zeros(len(x),dtype=bool)
+  gtis=f[2].data
+  for i in range(len(gtis)):
+    gtis[i]=(gtis[i][0]-timezero,gtis[i][1]-timezero)
+  imeta['gtis']=gtis
+  for g in gtis:
+    in_gti=np.logical_and(x>=g[0],x<g[1])
+    gtimask=np.logical_or(gtimask,in_gti)
+
+  x=x[gtimask]
+  y=y[gtimask]
+  ye=ye[gtimask]
+
+  imeta['binsize']=f[1].header['TIMEDEL']
+  f.close()
+  return nicer_lightcurve(x,y,ye,meta=imeta)
 
 ###############################################################################
 
