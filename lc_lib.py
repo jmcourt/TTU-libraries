@@ -1352,7 +1352,7 @@ class lightcurve(dat.DataSet):
     
   # Burst properties!  Shameless PANTHEON ripoff!
 
-  def get_burst_properties(self,thresh_hi,thresh_lo,scan_buffer=5,thresh_method='standard deviations',parameter=1):
+  def get_burst_properties(self,thresh_hi,thresh_lo,scan_buffer=5,thresh_method='standard deviations',parameter=10,environment_scan=100):
     if thresh_method.lower()=='percentile':
       high_thresh=np.percentile(self.get_y(),thresh_hi)
       low_thresh=np.percentile(self.get_y(),thresh_lo)
@@ -1436,6 +1436,7 @@ class lightcurve(dat.DataSet):
       else:
         s_time=self.get_x()[s_index]
         e_time=self.get_x()[burst_starts[b]]
+        s_time=max(s_time,e_time-environment_scan)
         preburst_mean=self.calved(s_time,e_time).get_mean()
 
       if e_index-burst_ends[b]<1:
@@ -1443,6 +1444,7 @@ class lightcurve(dat.DataSet):
       else:
         s_time=self.get_x()[burst_ends[b]]
         e_time=self.get_x()[e_index-1]
+        e_time=min(e_time,s_time+environment_scan)
         postburst_mean=self.calved(s_time,e_time).get_mean()
       
       s_time=self.get_x()[burst_starts[b]]
