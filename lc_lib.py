@@ -1170,11 +1170,20 @@ class lightcurve(dat.DataSet):
 
   # Flux phase diagrams!
 
-  def flux_phase_diagram(self,period=None,Ncycles_per_line=2):
+  def flux_phase_diagram(self,period=None,Ncycles_per_line=2,offset=None):
     if period==None:
       period=self.fetch_period()
     phase_bins=int(round(period/self.get_binsize())*Ncycles_per_line)
-    even_data=self.evened_bins(period*Ncycles_per_line/phase_bins)
+    if offset==0:
+      offset=None
+    if offset==None:
+      npdata=self
+    elif offset<0:
+      wr.warn('Negative offset provided!  Setting offset to zero.')
+      npdata=self
+    else:
+      npdata=self.nan_padded((1-offset)*period,front=True)
+    even_data=npdata.evened_bins(period*Ncycles_per_line/phase_bins)
     length=even_data.get_length()
     length=(length//phase_bins)*phase_bins
     even_data.calve_by_length(length)
@@ -1184,9 +1193,9 @@ class lightcurve(dat.DataSet):
     Z=even_data.get_y().reshape(n_columns,phase_bins)
     self.fp_data=dat.TwoD_Dataframe(ph_axis,cy_axis,Z)
     
-  def plot_flux_phase_diagram(self,period=None,Ncycles_per_line=2,output=None,block=False,norm_per_line=True,nans_as=np.nan,colour_range='auto',cmap='viridis',colourbar=False,cbar_ax=None):
+  def plot_flux_phase_diagram(self,period=None,Ncycles_per_line=2,offset=None,output=None,block=False,norm_per_line=True,nans_as=np.nan,colour_range='auto',cmap='viridis',colourbar=False,cbar_ax=None):
     if not self.has('fp_data'):
-      self.flux_phase_diagram(period,Ncycles_per_line)
+      self.flux_phase_diagram(period,Ncycles_per_line,offset=offset)
     plot_data=self.fp_data.copy()
     ax=fi.filter_axes(output)
     ax.set_title(self.get_title()+' Flux-Phase Diagram')
@@ -1213,6 +1222,23 @@ class lightcurve(dat.DataSet):
         c=pl.colorbar(c,cax=cbar_ax)
     fi.plot_save(output,block)
     return c
+
+  def nan_pad(self,time,front=True):
+    # WARNING!  This is a hacky fix to a problem in flux-phase diagram creation.  Use at your own risk...
+    addbit=self.copy()
+    if front:
+      addbit.set_x(np.array([self.get_start_time()-time]))
+    else:
+      addbit.set_x(np.array([self.get_end_time()+time]))
+    addbit.set_y(np.array([np.nan]))
+    addbit.set_ye(np.array([np.nan]))
+    self.add_data(addbit)
+    
+  def nan_padded(self,time,front=True):
+    # WARNING!  This is a hacky fix to a problem in flux-phase diagram creation.  Use at your own risk...
+    n=self.copy()
+    n.nan_pad(time,front=front)
+    return n
 
   # Phase-folder!  Does a bog-standard fixed period phase-folding
 
