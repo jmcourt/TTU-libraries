@@ -330,7 +330,7 @@ def gaussian_bootstrap(y,ye):
 
 # --------------- Plotting methods -----------------------
 
-def arrow_plot(ax,x,y,color='C0',quiver_thickness=0.005,edgecolor=None,facecolor=None,marker='.',**kwargs):
+def arrow_plot(ax,x,y,color='C0',quiver_thickness=0.005,edgecolor=None,facecolor=None,marker='.',headwidth=3,headlength=5,headaxislength=4.5,**kwargs):
   """arrow_plot
     
   Plots a series of points connected by arrows at the half-way point.
@@ -354,7 +354,8 @@ def arrow_plot(ax,x,y,color='C0',quiver_thickness=0.005,edgecolor=None,facecolor
             headwidth=0.,headlength=0.,headaxislength=0.,
             width=quiver_thickness,color=color,**kwargs)
   ax.quiver(x[:-1],y[:-1],dx/2,dy/2,
-                scale=1,scale_units='xy',angles='xy',
+            scale=1,scale_units='xy',angles='xy',
+            headwidth=headwidth,headlength=headlength,headaxislength=headaxislength,
             width=quiver_thickness,color=color,**kwargs)
 
 # --------------- Stats Methods --------------------------

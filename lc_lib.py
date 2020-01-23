@@ -1570,7 +1570,7 @@ class lightcurve(dat.DataSet):
     self.eclipse_widths_e=np.array(eclipse_widths_e)
     self.eclipse_contin_e=np.array(eclipse_contin_e)
 
-  def plot_eclipse_depths_continuum_diagram(self,bin_factor=1,output=None,block=False,arrowplot=False,plot1_1=True,q_lim=50,q_lim_absolute=False,star_flux=None,**kwargs):
+  def plot_eclipse_depths_continuum_diagram(self,bin_factor=1,output=None,block=False,arrowplot=False,headwidth=3,headlength=5,headaxislength=4.5,plot1_1=True,q_lim=50,q_lim_absolute=False,star_flux=None,**kwargs):
     if not self.has('eclipse_depths'):
       raise dat.DataError('Must prepare eclipse properties before plotting EDC diagram!')
     raw_x=self.eclipse_contin
@@ -1579,9 +1579,9 @@ class lightcurve(dat.DataSet):
     raw_ye=self.eclipse_depths_e
     px,py,pxe,pye=dat.rebin_by_factor(bin_factor,raw_x,raw_y,raw_xe,raw_ye)
     ax=fi.filter_axes(output)
-    #ax.errorbar(px,py,xerr=pxe,yerr=pye,zorder=-1,**kwargs)
+    ax.errorbar(px,py,xerr=pxe,yerr=pye,zorder=-1,**kwargs)
     if arrowplot:
-      dat.arrow_plot(ax,px,py,zorder=90)
+      dat.arrow_plot(ax,px,py,zorder=90,headwidth=headwidth,headlength=headlength,headaxislength=headaxislength)
     if plot1_1:
       if star_flux==None:
         if not q_lim_absolute:
@@ -1597,7 +1597,7 @@ class lightcurve(dat.DataSet):
     ax.set_ylabel('Eclipse Depth'+self.y_unit_string())
     pl.show(block=block)
 
-  def plot_flattened_eclipse_depths_continuum_diagram(self,bin_factor=1,output=None,block=False,arrowplot=False,q_lim=50,q_lim_absolute=False,star_flux=None,**kwargs):
+  def plot_flattened_eclipse_depths_continuum_diagram(self,bin_factor=1,output=None,block=False,arrowplot=False,q_lim=50,headwidth=3,headlength=5,headaxislength=4.5,q_lim_absolute=False,star_flux=None,**kwargs):
     if not self.has('eclipse_depths'):
       raise dat.DataError('Must prepare eclipse properties before plotting EDC diagram!')
     raw_x=self.eclipse_contin
@@ -1623,7 +1623,7 @@ class lightcurve(dat.DataSet):
     ax=fi.filter_axes(output)
     ax.errorbar(px,py,xerr=pxe,yerr=pye,color='0.7',zorder=-9000,**kwargs)
     if arrowplot:
-      dat.arrow_plot(ax,px,py,zorder=2)
+      dat.arrow_plot(ax,px,py,zorder=2,headwidth=headwidth,headlength=headlength,headaxislength=headaxislength)
     ax.axhline(1,color='k',zorder=-9000)
     ax.set_xlabel('Out of Eclipse Rate'+self.y_unit_string())
     ax.set_ylabel('Fractional Eclipse Depth')
