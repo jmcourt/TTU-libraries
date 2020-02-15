@@ -94,6 +94,8 @@ class lightcurve(dat.DataSet):
     self.y=y
   def set_ye(self,ye):
     self.ye=ye
+  def zero_errors(self):
+    self.set_ye(self.get_ye()*0)
 
   def get_bx(self):
     return self.bx
@@ -1628,6 +1630,7 @@ class lightcurve(dat.DataSet):
     ax.set_xlabel('Out of Eclipse Rate'+self.y_unit_string())
     ax.set_ylabel('Fractional Eclipse Depth')
     pl.show(block=block)
+    return star_flux
 
   # Some super basic arithmetic functions for manipulating lightcurves, i.e. "add a constant", "divide by a constant"
 
@@ -1956,6 +1959,19 @@ def get_kepler_lc(filename):
 ###############################################################################
 
 def get_nicer_lc(filename):
+  f=safe_open_fits(filename)
+  if f[1].header['TELESCOP'][:5].upper()!='NICER':
+    raise dat.DataError('FITS file does not appear to be from NICER')
+  extname=f[1].header['EXTNAME'].upper()
+  f.close()
+  if extname=='RATE':
+    return get_nicer_lc_from_rate(filename)
+  elif extname=='EVENTS':
+    return get_nicer_lc_from_events(filename)
+  else:
+    raise dat.DataError('Unknown NICER file type!')
+
+def get_nicer_lc_from_rate(filename):
   imeta={}
   f=safe_open_fits(filename)
   if f[1].header['TELESCOP'][:5].upper()!='NICER':
@@ -1990,6 +2006,10 @@ def get_nicer_lc(filename):
   imeta['binsize']=f[1].header['TIMEDEL']
   f.close()
   return nicer_lightcurve(x,y,ye,meta=imeta)
+
+def get_nicer_lc_from_events(filename):
+  raise NotImplementedError('Cant get Nicer lcs from event data yet')
+  
 
 ###############################################################################
 
@@ -2044,12 +2064,13 @@ def get_rxte_lc_from_gx(filename,binsize,min_chan=0,max_chan=255):
 
 ###############################################################################
 
-def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=None,meta_sep=':'):
+def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,flag_ind=None,flag_thresh=0.1,data_sep=None,meta_sep=':'):
   f=open(filename,'r')
   imeta={}
   x=[]
   y=[]
   ye=[]
+  has_flag=flag_ind!=None
   mxind=max(x_ind,y_ind,e_ind)
   for line in f:
     if len(line.split(meta_sep))>1:
@@ -2070,6 +2091,10 @@ def get_lc_from_csv(filename,x_ind=0,y_ind=1,e_ind=2,data_sep=None,meta_sep=':')
       if len(l)<=mxind:
         continue
       try:
+        if has_flag:
+          flag=float(l[flag_ind])
+          if flag>flag_thresh:
+            continue
         xin=float(l[x_ind])
         yin=float(l[y_ind])
         ein=float(l[e_ind])
